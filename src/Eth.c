@@ -21,7 +21,7 @@
 #include <Eth.h>
 
 
-void Eth_Init(const Eth_ConfigType* Config) {
+void Eth_Init(const Eth_ConfigType* CfgPtr) {
 	// body of the function
 }
 
