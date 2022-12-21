@@ -56,6 +56,13 @@ typedef enum {
 } EthCtrlMacLayerSubType;
 
 
+typedef enum {
+	ETH_DEV_NONE,
+	ETH_DEV_ENC28J60,
+	MAX_ETH_DEV
+} EthControllerDevType;
+
+
 typedef struct {
     boolean                 buf_handlg;
     boolean                 enable_mii;
@@ -67,6 +74,7 @@ typedef struct {
     EthCtrlMacLayerType     mac_lr_typ;
     EthCtrlMacLayerSubType  mac_sb_typ;
     uint8                   mac_addres[6];
+    EthControllerDevType    spi_device;
 } EthCtrlConfigType;
 
 
@@ -120,7 +128,7 @@ typedef struct {
 } Eth_ConfigType;
 
 
-#define ETH_DRIVER_MAX_CHANNEL    (2)
+#define ETH_DRIVER_MAX_CHANNEL    (1)
 
 
 extern const Eth_ConfigType EthConfigs[ETH_DRIVER_MAX_CHANNEL];
