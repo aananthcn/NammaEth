@@ -101,6 +101,7 @@ typedef struct {
     const boolean               txd_hdr_seq;
     const boolean               tx_en_cksum;
     const boolean               tx_cut_thru;
+    const boolean               spi_timstmp;
     const uint8                 tx_crdthrsh; /* Credit Threshold */
     const boolean               spi_syncacc; /* Accesss Synchronous */
     const Spi_SequenceEnumType  spisequence;
