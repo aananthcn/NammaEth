@@ -7,10 +7,10 @@ LDFLAGS  += -g
 CFLAGS   += -Werror ${INCDIRS} -g
 ASFLAGS  += ${INCDIRS} -g
 
-$(info compiling Lin source files)
+$(info compiling Eth source files)
 
 
 ETH_OBJS := \
-	${ETH_PATH}/src/Lin.o \
-	${ETH_PATH}/cfg/Lin_cfg.o
+	${ETH_PATH}/src/Eth.o \
+	${ETH_PATH}/cfg/Eth_cfg.o
 

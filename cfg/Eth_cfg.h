@@ -5,7 +5,8 @@
 
 #include <Platform_Types.h>
 
-#define ETH_DRIVER_MAX_CHANNEL    (2)
+#include <Spi_cfg.h>
+
 
 
 typedef struct {
@@ -70,11 +71,55 @@ typedef struct {
 
 
 typedef struct {
-    const EthGeneralCfgType     general;
-    const EthCtrlOffloadingType offload;
-    const EthCtrlConfigType     ctrlcfg;
+    const uint16    buff_len;
+    const uint16    buf_totl;
+    const uint16    fifo_idx;
+    const uint8     fifoprio;
+} Eth_ConfigFifoType;
+
+
+typedef struct {
+    const uint32 predes_order;
+} Eth_ConfigSchedulerType;
+
+
+typedef struct {
+    const uint32 idle_slope;
+    const uint32 max_credit;
+    const uint32 min_credit;
+} Eth_ConfigShaperType;
+
+
+typedef struct {
+    const uint8                 pay_ld_size;
+    const uint8                 com_retries;
+    const uint32                ctimeout_ms; /* Comm. Timeout */
+    const boolean               ctrldatprot;
+    const boolean               rx_cs_align;
+    const boolean               rx_cut_thru;
+    const boolean               rx_zero_aln;
+    const boolean               txd_hdr_seq;
+    const boolean               tx_en_cksum;
+    const boolean               tx_cut_thru;
+    const uint8                 tx_crdthrsh; /* Credit Threshold */
+    const boolean               spi_syncacc; /* Accesss Synchronous */
+    const Spi_SequenceEnumType  spisequence;
+} Eth_ConfigSpiCfgType;
+
+
+typedef struct {
+    const EthGeneralCfgType         general;
+    const EthCtrlOffloadingType     offload;
+    const EthCtrlConfigType         ctrlcfg;
+    const Eth_ConfigFifoType        fifo_ig;
+    const Eth_ConfigFifoType        fifo_eg;
+    const Eth_ConfigSchedulerType   sched_c;
+    const Eth_ConfigShaperType      shape_c;
+    const Eth_ConfigSpiCfgType      spi_cfg;
 } Eth_ConfigType;
 
+
+#define ETH_DRIVER_MAX_CHANNEL    (2)
 
 
 extern const Eth_ConfigType EthConfigs[ETH_DRIVER_MAX_CHANNEL];
