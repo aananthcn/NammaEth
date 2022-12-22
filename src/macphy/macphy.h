@@ -1,5 +1,5 @@
 /*
- * Created on Tue Dec 20 2022 6:59:35 AM
+ * Created on Thu Dec 22 2022 6:35:19 AM
  *
  * The MIT License (MIT)
  * Copyright (c) 2022 Aananth C N
@@ -18,19 +18,9 @@
  * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-#include <Eth.h>
+#ifndef NAMMA_AUTOSAR_MACPHY_H
+#define NAMMA_AUTOSAR_MACPHY_H
 
-#include <macphy.h>
+void MacPhy_Init(void);
 
-
-void Eth_Init(const Eth_ConfigType* CfgPtr) {
-	// body of the function
-	int i;
-	for (i = 0; i < ETH_DRIVER_MAX_CHANNEL; i++) {
-		if (CfgPtr[i].ctrlcfg.enable_mii == TRUE) {
-			// call function to initialize the MACPHY via SPI
-			MacPhy_Init();
-		}
-	}
-}
-
+#endif

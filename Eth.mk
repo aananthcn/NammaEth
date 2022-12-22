@@ -1,7 +1,8 @@
 INCDIRS  += -I ${ETH_PATH}/src \
 	    -I ${ETH_PATH}/api	\
 	    -I ${ETH_PATH}/cfg \
-	    -I ${ETH_PATH}/src/bsp/
+	    -I ${ETH_PATH}/src/macphy \
+	    -I ${ETH_PATH}/src/bsp
 
 LDFLAGS  += -g
 CFLAGS   += -Werror ${INCDIRS} -g
