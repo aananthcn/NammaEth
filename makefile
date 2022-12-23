@@ -28,6 +28,7 @@ OBJCOPY=${COMPILER}objcopy
 include ${ROOT_DIR}/app_paths.mk
 include ${ROOT_DIR}/path_defs.mk
 
+
 INCDIRS  += -I ${ETH_PATH}/src \
 	    -I ${ETH_PATH}/api	\
 	    -I ${ETH_PATH}/cfg \
@@ -40,19 +41,8 @@ INCDIRS  += -I ${ETH_PATH}/src \
 	    -I ${SPI_PATH}/api \
 	    -I ${SPI_PATH}/cfg \
 
-# INCDIRS  += -I ${DIO_PATH}/src \
-# 	    -I ${DIO_PATH}/api	\
-# 	    -I ${DIO_PATH}/cfg \
-# 	    -I ${PORT_PATH}/src \
-# 	    -I ${PORT_PATH}/cfg \
-# 	    -I ${MCU_PATH}/src \
-# 	    -I ${MCU_PATH}/src/common \
-# 	    -I ${MCU_PATH}/src/common/api \
-# 	    -I ${MCU_PATH}/src/common/src \
-# 	    -I ${MCU_MICRO_PATH} \
 
-
-$(info compiling Dio source files)
+$(info compiling Eth source files)
 
 
 ETH_OBJS := \
