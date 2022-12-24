@@ -23,6 +23,7 @@
 
 
 void MacPhy_Init(void) {
+#if 0
 	// read location 0x00 == ERDPTL (reset value = 0xfa)
 	spi_data[0] = 0x00;
 	Spi_WriteIB(0, (const u8*)spi_data);
@@ -42,4 +43,5 @@ void MacPhy_Init(void) {
 	}
 	Spi_ReadIB(1, spi_data);
 	pr_log("Spi Rx data: 0x%02x\n", spi_data[0]);
+#endif
 }

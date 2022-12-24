@@ -51,20 +51,20 @@ ETH_OBJS := \
 	${ETH_PATH}/cfg/Eth_cfg.o
 
 
-LDFLAGS := -g
+LDFLAGS := -g -relocatable
 CFLAGS  := -Werror ${INCDIRS} -g
 ASFLAGS := ${INCDIRS} -g
 TARGET 	:= libEth.la
 # include c_l_flags.mk to add more definitions specific to micro-controller
 include ${ROOT_DIR}/c_l_flags.mk
+include ${ETH_PATH}/src/macphy/macphy.mk
 
 all: $(TARGET)
 
 LIB_OBJS := $(ETH_OBJS)
 
 $(TARGET): $(LIB_OBJS)
-	$(AR) r $@ $^
-	$(RANLIB) $@
+	$(LD) ${LDFLAGS} -o $@ $^
 
 clean:
 	$(RM) $(LIB_OBJS) $(TARGET)
