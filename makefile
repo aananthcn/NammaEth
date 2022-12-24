@@ -43,6 +43,7 @@ INCDIRS  += -I ${ETH_PATH}/src \
 	    -I ${SPI_PATH}/cfg \
 
 
+$(info  )
 $(info compiling Eth source files)
 
 
