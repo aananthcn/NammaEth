@@ -41,6 +41,7 @@ INCDIRS  += -I ${ETH_PATH}/src \
 	    -I ${MCU_STARTUP_PATH} \
 	    -I ${SPI_PATH}/api \
 	    -I ${SPI_PATH}/cfg \
+	    -I ${OS_PATH}/include
 
 
 $(info  )
