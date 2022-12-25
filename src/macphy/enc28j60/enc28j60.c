@@ -22,27 +22,79 @@
 #include <Spi.h>
 #include <os_api.h>
 
+#include "enc28j60.h"
 
-void MacPhy_Init(void) {
-	u8 spi_data[3];
 
-	// read location 0x00 == ERDPTL (reset value = 0xfa)
-	spi_data[0] = 0x00;
-	Spi_WriteIB(0, (const u8*)spi_data);
-	pr_log("Spi Tx data: 0x%02x\n", spi_data[0]);
-	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETH_2_BYTE)) {
-		pr_log("Spi Sync Transmit Failure!\n");
+// Main Control & Status Registers
+static uint8 Reg_EIE 	= 0x00;
+static uint8 Reg_EIR 	= 0x00;
+static uint8 Reg_ESTAT 	= 0x00;
+static uint8 Reg_ECON2 	= 0x80; // AUTOINC = 0x1
+static uint8 Reg_ECON1 	= 0x00;
+
+
+// BASIC ETHERNET Tx & Rx Buffers
+#define SPI_ETH_BASIC_CHAN_LEN	(2048)
+uint8 SpiEthBasicTx[SPI_ETH_BASIC_CHAN_LEN];
+uint8 SpiEthBasicRx[SPI_ETH_BASIC_CHAN_LEN];
+
+
+
+// local declaration
+uint8 enc28j60_read_reg(uint16 reg);
+boolean enc28j60_switch_bank(uint8 bank);
+
+
+//////////////////////////////////////////////
+// Function Definitions
+void macphy_init(void) {
+	uint8 data;
+	static uint8 bank;
+
+	data = enc28j60_read_reg(ERDPTL);
+	pr_log("ERDPTL: 0x%02x\n", data);
+
+	data = enc28j60_read_reg(ERDPTH);
+	pr_log("ERDPTH: 0x%02x\n", data);
+
+	enc28j60_switch_bank(++bank);
+	if (bank > 3) {
+		bank = 0;
 	}
-	Spi_ReadIB(1, spi_data);
-	pr_log("Spi Rx data: 0x%02x\n", spi_data[0]);
+	data = enc28j60_read_reg(ECON1);
+	pr_log("ECON1: 0x%02x\n", data);
+}
 
-	// read location 0x01 == ERDPTH (reset value = 0x05)
-	spi_data[0] = 0x01;
-	Spi_WriteIB(0, (const u8*)spi_data);
-	pr_log("Spi Tx data: 0x%02x\n", spi_data[0]);
-	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETH_2_BYTE)) {
-		pr_log("Spi Sync Transmit Failure!\n");
+
+
+boolean enc28j60_switch_bank(uint8 bank) {
+	/* For the up-comming transmission, we just need to send 1+1 byte */
+	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, 2);
+
+	SpiEthBasicTx[0] = (uint8) ((WR_OPCODE) | (ECON1));
+	SpiEthBasicTx[1] = (uint8) ((Reg_ECON1 & 0xFC) | (bank & 0x03));
+	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
+		pr_log("%s: Spi Sync Tx failure!\n", __func__);
+		return FALSE;
 	}
-	Spi_ReadIB(1, spi_data);
-	pr_log("Spi Rx data: 0x%02x\n", spi_data[0]);
+
+	return TRUE;
+}
+
+
+
+uint8 enc28j60_read_reg(uint16 reg) {
+	/* For the up-comming transmission, we just need to send/recv 1+1 byte */
+	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, 2);
+
+	SpiEthBasicTx[0] = (uint8) ((RD_OPCODE) | (reg & 0xff));
+	SpiEthBasicTx[1] = 0x00; // dummy 2nd byte
+	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
+		pr_log("%s: Spi Sync Tx failure!\n", __func__);
+		return 0xFF;
+	}
+
+	/* Though ENC28J60 supports MOTOROLA SPI format, but in RPi Pico / ARM 
+	implementation, data received in response to the dummy 2nd byte  */
+	return SpiEthBasicRx[1];
 }

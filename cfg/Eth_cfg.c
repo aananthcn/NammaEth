@@ -74,7 +74,7 @@ const Eth_ConfigType EthConfigs[ETH_DRIVER_MAX_CHANNEL] = {
 			.spi_timstmp = FALSE,
 			.tx_crdthrsh = 0,
 			.spi_syncacc = FALSE,
-			.spisequence = SEQ_ETH_2_BYTE
+			.spisequence = SEQ_ETHERNET_BASIC_TX_RX
 		}
 	},
 };

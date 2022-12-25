@@ -21,6 +21,6 @@
 #ifndef NAMMA_AUTOSAR_MACPHY_H
 #define NAMMA_AUTOSAR_MACPHY_H
 
-void MacPhy_Init(void);
+void macphy_init(void);
 
 #endif
