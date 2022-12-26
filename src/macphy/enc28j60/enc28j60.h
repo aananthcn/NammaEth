@@ -28,16 +28,17 @@
 // Encoding                            //
 // ~~~~~~~~                            //
 // byte 0, bits[0:7] - reg. address    //
-// byte 1, bits[0:6] - bank number     //
+// byte 1, bits[0:5] - bank number     //
+// byte 1, bit[6]    - Common register //
 // byte 1, bit[7]    - MAC or MII reg. //
 /////////////////////////////////////////
 
 // ENC28J60 Common Registers
-#define EIE             (0x1B)
-#define EIR             (0x1C)
-#define ESTAT           (0x1D)
-#define ECON2           (0x1E)
-#define ECON1           (0x1F)
+#define EIE             (0x4000 | 0x1B)
+#define EIR             (0x4000 | 0x1C)
+#define ESTAT           (0x4000 | 0x1D)
+#define ECON2           (0x4000 | 0x1E)
+#define ECON1           (0x4000 | 0x1F)
 
 // ENC28J60 Bank-0 Registers
 #define ERDPTL          (0x0000 | 0x00)

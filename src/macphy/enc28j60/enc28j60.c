@@ -26,11 +26,7 @@
 
 
 // Main Control & Status Registers
-static uint8 Reg_EIE 	= 0x00;
-static uint8 Reg_EIR 	= 0x00;
-static uint8 Reg_ESTAT 	= 0x00;
-static uint8 Reg_ECON2 	= 0x80; // AUTOINC = 0x1
-static uint8 Reg_ECON1 	= 0x00;
+static uint8 Regs_Cmn[5] = {0x00, 0x00, 0x00, 0x80 /* AUTOINC = 0x1*/, 0x00};
 
 
 // BASIC ETHERNET Tx & Rx Buffers
@@ -40,43 +36,62 @@ uint8 SpiEthBasicRx[SPI_ETH_BASIC_CHAN_LEN];
 
 
 
-// local declaration
-uint8 enc28j60_read_reg(uint16 reg);
-boolean enc28j60_switch_bank(uint8 bank);
-
 
 //////////////////////////////////////////////
 // Function Definitions
-void macphy_init(void) {
-	uint8 data;
-	static uint8 bank;
-
-	data = enc28j60_read_reg(ERDPTL);
-	pr_log("ERDPTL: 0x%02x\n", data);
-
-	data = enc28j60_read_reg(ERDPTH);
-	pr_log("ERDPTH: 0x%02x\n", data);
-
-	enc28j60_switch_bank(++bank);
-	if (bank > 3) {
-		bank = 0;
+static inline uint8 enc28j60_get_cmn_reg(uint16 reg) {
+	// check for the common register flag in the register argument
+	if (!(reg & 0x4000)) {
+		pr_log("%s: invalid register!\n", __func__);
+		return 0xff;
 	}
-	data = enc28j60_read_reg(ECON1);
-	pr_log("ECON1: 0x%02x\n", data);
+
+	// 0x1B - common reg offset; 0x4000 to remove the flag
+	return Regs_Cmn[reg - 0x401B];
+}
+
+
+static inline void enc28j60_set_cmn_reg(uint16 reg, uint8 data) {
+	// check for the common register flag in the register argument
+	if (!(reg & 0x4000)) {
+		pr_log("%s: invalid register!\n", __func__);
+		return;
+	}
+
+	// 0x1B - common reg offset; 0x4000 to remove the flag
+	Regs_Cmn[reg - 0x401B] = data;
+}
+
+
+static inline uint8 enc28j60_get_bank_info(uint16 reg) {
+	return ((reg & 0x3F00) >> 8);
 }
 
 
 
-boolean enc28j60_switch_bank(uint8 bank) {
+boolean enc28j60_switch_bank(uint16 reg) {
+	uint8 data;
+	uint8 bank;
+
+	// check if the bank is already switched
+	bank = enc28j60_get_bank_info(reg);
+	if (bank == (enc28j60_get_cmn_reg(ECON1) & 0x3)) {
+		return FALSE;
+	}
+
 	/* For the up-comming transmission, we just need to send 1+1 byte */
 	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, 2);
 
 	SpiEthBasicTx[0] = (uint8) ((WR_OPCODE) | (ECON1));
-	SpiEthBasicTx[1] = (uint8) ((Reg_ECON1 & 0xFC) | (bank & 0x03));
+	data = (uint8) ((enc28j60_get_cmn_reg(ECON1) & 0xFC) | (bank & 0x03));
+	SpiEthBasicTx[1] = data;
 	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
 		pr_log("%s: Spi Sync Tx failure!\n", __func__);
 		return FALSE;
 	}
+
+	// update the copy of common register on successful transmit
+	enc28j60_set_cmn_reg(ECON1, data);
 
 	return TRUE;
 }
@@ -84,6 +99,9 @@ boolean enc28j60_switch_bank(uint8 bank) {
 
 
 uint8 enc28j60_read_reg(uint16 reg) {
+	// switch bank based on register
+	enc28j60_switch_bank(reg);
+
 	/* For the up-comming transmission, we just need to send/recv 1+1 byte */
 	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, 2);
 
@@ -94,7 +112,55 @@ uint8 enc28j60_read_reg(uint16 reg) {
 		return 0xFF;
 	}
 
+	// if the read operation is on common registers, take a copy
+	if (reg & 0x4000) {
+		enc28j60_set_cmn_reg(reg, SpiEthBasicRx[1]);
+	}
+
 	/* Though ENC28J60 supports MOTOROLA SPI format, but in RPi Pico / ARM 
 	implementation, data received in response to the dummy 2nd byte  */
 	return SpiEthBasicRx[1];
+}
+
+
+
+void enc28j60_write_reg(uint16 reg, uint8 data) {
+	// switch bank based on register
+	enc28j60_switch_bank(reg);
+
+	/* For the up-comming transmission, we just need to send/recv 1+1 byte */
+	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, 2);
+
+	SpiEthBasicTx[0] = (uint8) ((WR_OPCODE) | (reg & 0xff));
+	SpiEthBasicTx[1] = data;
+	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
+		pr_log("%s: Spi Sync Tx failure!\n", __func__);
+		return;
+	}
+
+	// if the write operation is on common registers, take a copy
+	if (reg & 0x4000) {
+		enc28j60_set_cmn_reg(reg, data);
+	}
+}
+
+
+
+void macphy_init(void) {
+	uint8 data;
+
+	data = enc28j60_read_reg(ECON1);
+	pr_log("ECON1: 0x%02x\n", data);
+
+	data = enc28j60_read_reg(ERDPTL);
+	pr_log("ERDPTL: 0x%02x\n", data);
+
+	data = enc28j60_read_reg(ERDPTH);
+	pr_log("ERDPTH: 0x%02x\n", data);
+
+	data = enc28j60_read_reg(EREVID);
+	pr_log("EREVID: 0x%02x\n", data);
+
+	data = enc28j60_read_reg(ECOCON);
+	pr_log("ECOCON: 0x%02x\n", data);
 }
