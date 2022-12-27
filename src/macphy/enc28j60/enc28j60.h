@@ -142,6 +142,44 @@
 #define SC_RST_OPCODE   (0xFF)
 
 
+// ENC28J60 ERXFCON Register Bit Definitions
+#define ERXFCON_UCEN    (0x80)
+#define ERXFCON_ANDOR   (0x40)
+#define ERXFCON_CRCEN   (0x20)
+#define ERXFCON_PMEN    (0x10)
+#define ERXFCON_MPEN    (0x08)
+#define ERXFCON_HTEN    (0x04)
+#define ERXFCON_MCEN    (0x02)
+#define ERXFCON_BCEN    (0x01)
+
+
+// ENC28J60 MACON1 Register Bit Definitions
+#define MACON1_LOOPBK   (0x10)
+#define MACON1_TXPAUS   (0x08)
+#define MACON1_RXPAUS   (0x04)
+#define MACON1_PASSALL  (0x02)
+#define MACON1_MARXEN   (0x01)
+
+// ENC28J60 MACON2 Register Bit Definitions
+#define MACON2_MARST    (0x80)
+#define MACON2_RNDRST   (0x40)
+#define MACON2_MARXRST  (0x08)
+#define MACON2_RFUNRST  (0x04)
+#define MACON2_MATXRST  (0x02)
+#define MACON2_TFUNRST  (0x01)
+
+// ENC28J60 MACON3 Register Bit Definitions
+#define MACON3_PADCFG2  (0x80)
+#define MACON3_PADCFG1  (0x40)
+#define MACON3_PADCFG0  (0x20)
+#define MACON3_TXCRCEN  (0x10)
+#define MACON3_PHDRLEN  (0x08)
+#define MACON3_HFRMLEN  (0x04)
+#define MACON3_FRMLNEN  (0x02)
+#define MACON3_FULDPX   (0x01)
+
+
+
 typedef enum {
         MACPHY_UNINIT,
         MACPHY_INIT,

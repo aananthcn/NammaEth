@@ -22,7 +22,21 @@
 #include <Spi.h>
 #include <os_api.h>
 
+#include <stddef.h>
+
 #include "enc28j60.h"
+
+
+// Memory Buffer Layout (8k)
+#define BUFFER_BEG	0x0000
+#define BUFFER_END	0x1FFF
+#define TX_BUF_BEG	BUFFER_BEG
+#define TX_BUF_END	0x0FFF
+#define RX_BUF_BEG	0x1000
+#define RX_BUF_END	BUFFER_END
+
+// Frame configs
+#define MAX_FRMLEN	(1522)
 
 
 // Main Control & Status Registers
@@ -128,14 +142,22 @@ uint8 enc28j60_read_reg(uint16 reg) {
 
 
 boolean enc28j60_write_reg(uint16 reg, uint8 data) {
+	uint8 dlen = 2;
+
 	// switch bank based on register
 	enc28j60_switch_bank(reg);
 
+	/* MAC, MII register check */
+	if (reg & 0x8000) {
+		dlen = 3;
+		SpiEthBasicTx[dlen-2] = 0x00; // dummy byte
+	}
+
 	/* For the up-comming transmission, we just need to send/recv 1+1 byte */
-	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, 2);
+	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen);
 
 	SpiEthBasicTx[0] = (uint8) ((WR_REG_OPCODE) | (reg & 0xff));
-	SpiEthBasicTx[1] = data;
+	SpiEthBasicTx[dlen-1] = data;
 	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
 		pr_log("%s: Spi Sync Tx failure!\n", __func__);
 		return FALSE;
@@ -165,13 +187,53 @@ boolean enc28j60_sys_cmd(uint8 cmd) {
 
 //////////////////////////////////////////////
 // Global Functions
-void macphy_init(void) {
-	uint8 data;
+boolean macphy_init(uint8 *mac_addr) {
+	if (mac_addr == NULL) {
+		pr_log("%s: invalid MAC address!\n", __func__);
+		return FALSE;
+	}
 
 	/* reset the chip first */
 	enc28j60_sys_cmd(SC_RST_OPCODE);
 
+	/* set buffer memory layout - Rx */
+	enc28j60_write_reg(ERXSTL, (uint8)(RX_BUF_BEG & 0xFF));
+	enc28j60_write_reg(ERXSTH, (uint8)(RX_BUF_BEG >> 8));
+	enc28j60_write_reg(ERXNDL, (uint8)(RX_BUF_END & 0xFF));
+	enc28j60_write_reg(ERXNDH, (uint8)(RX_BUF_END >> 8));
 
+	/* set buffer memory layout - Tx */
+	enc28j60_write_reg(ETXSTL, (uint8)(TX_BUF_BEG & 0xFF));
+	enc28j60_write_reg(ETXSTH, (uint8)(TX_BUF_BEG >> 8));
+	enc28j60_write_reg(ETXNDL, (uint8)(TX_BUF_END & 0xFF));
+	enc28j60_write_reg(ETXNDH, (uint8)(TX_BUF_END >> 8));
+
+	/* set packet filter for reception */
+	enc28j60_write_reg(ERXFCON, ERXFCON_UCEN|ERXFCON_CRCEN|ERXFCON_BCEN);
+
+	/* MAC configurations */
+	enc28j60_write_reg(MACON1, MACON1_MARXEN | MACON1_TXPAUS | MACON1_RXPAUS);
+	enc28j60_write_reg(MACON2, 0x00);
+	enc28j60_write_reg(MACON3, MACON3_PADCFG0 | MACON3_TXCRCEN | MACON3_FRMLNEN);
+
+	/* interframe gap configurations */
+	enc28j60_write_reg(MAIPGL, 0x12);
+	enc28j60_write_reg(MAIPGH, 0x0C);
+	enc28j60_write_reg(MABBIPG, 0x12);
+
+	/* max frame length configfigurations */
+	enc28j60_write_reg(MAMXFLL, (uint8)(MAX_FRMLEN & 0xFF));
+	enc28j60_write_reg(MAMXFLH, (uint8)(MAX_FRMLEN >> 8));
+
+	/* write MAC address - bit 48 on byte 0, hence reversed */
+	enc28j60_write_reg(MAADR5, mac_addr[0]);
+	enc28j60_write_reg(MAADR4, mac_addr[1]);
+	enc28j60_write_reg(MAADR3, mac_addr[2]);
+	enc28j60_write_reg(MAADR2, mac_addr[3]);
+	enc28j60_write_reg(MAADR1, mac_addr[4]);
+	enc28j60_write_reg(MAADR0, mac_addr[5]);
+
+	return TRUE;
 }
 
 
