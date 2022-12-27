@@ -131,8 +131,22 @@
 #define EPAUSL          (0x0300 | 0x18)
 #define EPAUSH          (0x0300 | 0x19)
 
-// Other definitions
-#define RD_OPCODE       (0x00)
-#define WR_OPCODE       (0x40)
+
+// SPI Instruction Set for ENC28J60
+#define RD_REG_OPCODE   (0x00) /* here bit[4:0] would by ORed by reg addr */
+#define RD_MEM_OPCODE   (0x3A)    
+#define WR_REG_OPCODE   (0x40) /* here bit[4:0] would by ORed by reg addr */
+#define WR_MEM_OPCODE   (0x7A)
+#define BT_SET_OPCODE   (0x80) /* here bit[4:0] would by ORed by arg */
+#define BT_CLR_OPCODE   (0xA0) /* here bit[4:0] would by ORed by arg */
+#define SC_RST_OPCODE   (0xFF)
+
+
+typedef enum {
+        MACPHY_UNINIT,
+        MACPHY_INIT,
+        MACPHY_MAX_STATE
+} MacPhyStateType;
+
 
 #endif
