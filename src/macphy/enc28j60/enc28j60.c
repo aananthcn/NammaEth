@@ -187,7 +187,7 @@ boolean enc28j60_sys_cmd(uint8 cmd) {
 
 //////////////////////////////////////////////
 // Global Functions
-boolean macphy_init(uint8 *mac_addr) {
+boolean macphy_init(const uint8 *mac_addr) {
 	if (mac_addr == NULL) {
 		pr_log("%s: invalid MAC address!\n", __func__);
 		return FALSE;

@@ -29,7 +29,7 @@ void Eth_Init(const Eth_ConfigType* CfgPtr) {
 	for (i = 0; i < ETH_DRIVER_MAX_CHANNEL; i++) {
 		if (CfgPtr[i].ctrlcfg.enable_mii == TRUE) {
 			// call function to initialize the MACPHY via SPI
-			macphy_init();
+			(void)macphy_init(CfgPtr[i].ctrlcfg.mac_addres);
 		}
 	}
 }
