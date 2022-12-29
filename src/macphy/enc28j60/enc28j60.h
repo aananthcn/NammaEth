@@ -186,5 +186,6 @@ typedef enum {
         MACPHY_MAX_STATE
 } MacPhyStateType;
 
+boolean macphy_init(const uint8 *mac_addr);
 
 #endif
