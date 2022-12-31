@@ -187,4 +187,7 @@ typedef enum {
 } MacPhyStateType;
 
 
+// public functions
+boolean macphy_init(const uint8 *mac_addr);
+
 #endif
