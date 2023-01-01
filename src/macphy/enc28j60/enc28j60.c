@@ -325,6 +325,15 @@ boolean macphy_init(const uint8 *mac_addr) {
 	enc28j60_write_reg(MAADR1, mac_addr[4]);
 	enc28j60_write_reg(MAADR0, mac_addr[5]);
 
+	/* Configure PHY */
+	enc28j60_write_phy(PHCON1, PHCON1_PDPXMD); // PHY in full-duplex
+	enc28j60_write_phy(PHLCON, 0x0CDA); // LED configurations
+
+	/* Enable packet receiption */
+	enc28j60_bitset_reg(EIE, EIE_INTIE | EIE_PKTIE);
+	// enc28j60_bitset_reg(ECON1, ECON1_RXEN | ECON1_CSUMEN);
+	enc28j60_bitset_reg(ECON1, ECON1_RXEN);
+
 	return TRUE;
 }
 

@@ -160,6 +160,31 @@
 #define ERXFCON_MCEN    (0x02)
 #define ERXFCON_BCEN    (0x01)
 
+// ENC28J60 EIE Register Bit Definitions
+#define EIE_INTIE       (0x80)
+#define EIE_PKTIE       (0x40)
+#define EIE_DMAIE       (0x20)
+#define EIE_LINKIE      (0x10)
+#define EIE_TXIE        (0x08)
+#define EIE_WOLIE       (0x04)
+#define EIE_TXERIE      (0x02)
+#define EIE_RXERIE      (0x01)
+
+// ENC28J60 ECON2 Register Bit Definitions
+#define ECON2_AUTOINC   (0x80)
+#define ECON2_PKTDEC    (0x40)
+#define ECON2_PWRSV     (0x20)
+#define ECON2_VRPS      (0x08)
+
+// ENC28J60 ECON1 Register Bit Definitions
+#define ECON1_TXRST     (0x80)
+#define ECON1_RXRST     (0x40)
+#define ECON1_DMAST     (0x20)
+#define ECON1_CSUMEN    (0x10)
+#define ECON1_TXRTS     (0x08)
+#define ECON1_RXEN      (0x04)
+#define ECON1_BSEL1     (0x02)
+#define ECON1_BSEL0     (0x01)
 
 // ENC28J60 MACON1 Register Bit Definitions
 #define MACON1_LOOPBK   (0x10)
@@ -195,6 +220,24 @@
 // ENC28J60 MICMD Register Bit Definitions
 #define MICMD_MIISCAN   (0x02)
 #define MICMD_MIIRD     (0x01)
+
+// ENC28J60 PHY PHCON1 Register Bit Definitions
+#define PHCON1_PRST     (0x8000)
+#define PHCON1_PLOOPBK  (0x4000)
+#define PHCON1_PPWRSV   (0x0800)
+#define PHCON1_PDPXMD   (0x0100)
+
+// ENC28J60 PHY PHSTAT1 Register Bit Definitions
+#define PHSTAT1_PFDPX   (0x1000)
+#define PHSTAT1_PHDPX   (0x0800)
+#define PHSTAT1_LLSTAT  (0x0004)
+#define PHSTAT1_JBSTAT  (0x0002)
+
+// ENC28J60 PHY PHCON2 Register Bit Definitions
+#define PHCON2_FRCLINK  (0x4000)
+#define PHCON2_TXDIS    (0x2000)
+#define PHCON2_JABBER   (0x0400)
+#define PHCON2_HDLDIS   (0x0100)
 
 
 #endif
