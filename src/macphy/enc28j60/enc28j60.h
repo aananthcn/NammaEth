@@ -55,5 +55,7 @@ boolean enc28j60_write_reg(uint16 reg, uint8 data);
 boolean enc28j60_bitset_reg(uint16 reg, uint8 data);
 boolean enc28j60_bitclr_reg(uint16 reg, uint8 data);
 
+uint16 enc28j60_read_phy(uint8 phyaddr);
+
 
 #endif

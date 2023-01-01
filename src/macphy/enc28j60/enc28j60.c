@@ -95,27 +95,6 @@ static inline boolean enc28j60_switch_bank(uint16 reg) {
 //////////////////////////////////////////////
 // Basic ENC28J60 Primitive - Register R/W
 uint8 enc28j60_read_reg(uint16 reg) {
-	// switch bank based on register
-	enc28j60_switch_bank(reg);
-
-	/* For the up-comming transmission, we just need to send/recv 1+1 byte */
-	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, 2);
-
-	SpiEthBasicTx[0] = (uint8) ((RD_REG_OPCODE) | (reg & 0xff));
-	SpiEthBasicTx[1] = 0x00; // dummy 2nd byte
-	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
-		pr_log("%s: Spi Sync Tx failure!\n", __func__);
-		return 0xFF;
-	}
-
-	/* Though ENC28J60 supports MOTOROLA SPI format, but in RPi Pico / ARM 
-	implementation, data received in response to the dummy 2nd byte  */
-	return SpiEthBasicRx[1];
-}
-
-
-
-boolean enc28j60_write_reg(uint16 reg, uint8 data) {
 	uint8 dlen = 2;
 
 	// switch bank based on register
@@ -126,6 +105,29 @@ boolean enc28j60_write_reg(uint16 reg, uint8 data) {
 		dlen = 3;
 		SpiEthBasicTx[dlen-2] = 0x00; // dummy byte
 	}
+
+	/* For the up-comming transmission, we just need to send/recv 1+1 byte */
+	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen);
+
+	SpiEthBasicTx[0] = (uint8) ((RD_REG_OPCODE) | (reg & 0xff));
+	SpiEthBasicTx[dlen-1] = 0x00; // dummy 2nd byte for MII or MAC registers
+	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
+		pr_log("%s: Spi Sync Tx failure!\n", __func__);
+		return 0xFF;
+	}
+
+	/* Though ENC28J60 supports MOTOROLA SPI format, but in RPi Pico / ARM 
+	implementation, data received in response to the dummy 2nd byte  */
+	return SpiEthBasicRx[dlen-1];
+}
+
+
+
+boolean enc28j60_write_reg(uint16 reg, uint8 data) {
+	uint8 dlen = 2;
+
+	// switch bank based on register
+	enc28j60_switch_bank(reg);
 
 	/* For the up-comming transmission, we just need to send/recv 1+1 byte */
 	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen);
@@ -160,14 +162,14 @@ boolean enc28j60_sys_cmd(uint8 cmd) {
 static inline boolean enc28j60_bit_ops_reg(uint8 opcode, uint16 reg, uint8 data) {
 	uint8 dlen = 2;
 
-	// switch bank based on register
-	enc28j60_switch_bank(reg);
-
 	/* MAC, MII register check */
 	if (reg & 0x8000) {
 		// bit operations can be done only for Ethernet control registers
 		return FALSE;
 	}
+
+	// switch bank based on register
+	enc28j60_switch_bank(reg);
 
 	/* For the up-comming transmission, we just need to send/recv 1+1 byte */
 	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen);
@@ -198,10 +200,12 @@ boolean enc28j60_bitclr_reg(uint16 reg, uint8 data) {
 // Basic ENC28J60 Primitive - PHY R/W
 boolean enc28j60_check_phy_busy(void) {
 	boolean phy_busy = FALSE; // lets assume that PHY is idle
+	uint8 mstat;
 	uint8 cnt = 10; // let us not loop for ever
 
 	while(1) {
-		if (!(enc28j60_read_reg(MISTAT) & MISTAT_BUSY)) {
+		mstat = enc28j60_read_reg(MISTAT);
+		if (!(mstat & MISTAT_BUSY)) {
 			break;
 		}
 		cnt--;
@@ -218,16 +222,56 @@ boolean enc28j60_check_phy_busy(void) {
 
 uint16 enc28j60_read_phy(uint8 phyaddr) {
 	uint16 phyreg = 0xffff;
+	boolean phybusy;
+	uint8 hig, low;
 
 	// return if PHY is not free even after few retries
 	if (enc28j60_check_phy_busy()) {
+		pr_log("%s(): wait period exceeded [1]\n");
 		return phyreg;
 	}
 
+	// write the address of the PHY register to read
 	enc28j60_write_reg(MIREGADR, phyaddr);
-	// FIXME: incomplete
+
+	// set the MICMD.MIIRD bit
+	enc28j60_write_reg(MICMD, MICMD_MIIRD);
+
+	// wait 10.24us and poll MSTAT.BUSY bit
+	phybusy = enc28j60_check_phy_busy();
+
+	// clear the MICMD.MIIRD bit
+	enc28j60_write_reg(MICMD, 0x00);
+	if (phybusy) {
+		pr_log("%s(): wait period exceeded [2]\n");
+		return phyreg;
+	}
+
+	// read desired data from MIRDL and MIRDH (order is important)
+	low = enc28j60_read_reg(MIRDL);
+	hig = enc28j60_read_reg(MIRDH);
+	phyreg = (hig << 8 | low);
 
 	return phyreg;
+}
+
+
+
+boolean enc28j60_write_phy(uint8 phyaddr, uint16 data) {
+	// write the address of the PHY register to read
+	enc28j60_write_reg(MIREGADR, phyaddr);
+
+	// write data low and high bytes
+	enc28j60_write_reg(MIWRL, (uint8)(data & 0xff));
+	enc28j60_write_reg(MIWRH, (uint8)(data >> 8));
+
+	// wait 10.24us and poll MSTAT.BUSY bit
+	if (enc28j60_check_phy_busy()) {
+		pr_log("%s(): wait period exceeded\n");
+		return FALSE;
+	}
+
+	return TRUE;
 }
 
 
