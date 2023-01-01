@@ -40,7 +40,7 @@
 
 
 // Main Control & Status Registers
-static uint8 Regs_Cmn[5] = {0x00, 0x00, 0x00, 0x80 /* AUTOINC = 0x1*/, 0x00};
+// static uint8 Regs_Cmn[5] = {0x00, 0x00, 0x00, 0x80 /* AUTOINC = 0x1*/, 0x00};
 static MacPhyStateType ENC28J60_State;
 
 
@@ -51,62 +51,41 @@ uint8 SpiEthBasicRx[SPI_ETH_BASIC_CHAN_LEN];
 
 
 
-
 //////////////////////////////////////////////
 // Local Functions
-static inline uint8 enc28j60_get_cmn_reg(uint16 reg) {
-	// check for the common register flag in the register argument
-	if (!(reg & 0x4000)) {
-		pr_log("%s: invalid register!\n", __func__);
-		return 0xff;
-	}
 
-	// 0x1B - common reg offset; 0x4000 to remove the flag
-	return Regs_Cmn[reg - 0x401B];
-}
-
-
-static inline void enc28j60_set_cmn_reg(uint16 reg, uint8 data) {
-	// check for the common register flag in the register argument
-	if (!(reg & 0x4000)) {
-		pr_log("%s: invalid register!\n", __func__);
-		return;
-	}
-
-	// 0x1B - common reg offset; 0x4000 to remove the flag
-	Regs_Cmn[reg - 0x401B] = data;
-}
-
-
-static inline uint8 enc28j60_get_bank_info(uint16 reg) {
-	return ((reg & 0x3F00) >> 8);
-}
-
-
-
+/* This function switches bank based on bits[0:5] - bank number bits
+** from passed argument (i.e., reg). */
 static inline boolean enc28j60_switch_bank(uint16 reg) {
 	uint8 data;
 	uint8 bank;
 
-	// check if the bank is already switched
-	bank = enc28j60_get_bank_info(reg);
-	if (bank == (enc28j60_get_cmn_reg(ECON1) & 0x3)) {
-		return FALSE;
+	// First, return if the target reg is a common register
+	if (0x4000 & reg) {
+		return TRUE; // bank switch is not required for common register
 	}
 
 	/* For the up-comming transmission, we just need to send 1+1 byte */
 	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, 2);
 
-	SpiEthBasicTx[0] = (uint8) ((WR_REG_OPCODE) | (ECON1));
-	data = (uint8) ((enc28j60_get_cmn_reg(ECON1) & 0xFC) | (bank & 0x03));
-	SpiEthBasicTx[1] = data;
+	/* Read ECON1 register */
+	SpiEthBasicTx[0] = (uint8) ((RD_REG_OPCODE) | (ECON1));
+	SpiEthBasicTx[1] = 0; // dummy
 	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
-		pr_log("%s: Spi Sync Tx failure!\n", __func__);
+		pr_log("%s: Spi Sync Tx failure[1]!\n", __func__);
 		return FALSE;
 	}
+	data = SpiEthBasicRx[1] & 0xFC; // remove last 2 bits & read
 
-	// update the copy of common register on successful transmit
-	enc28j60_set_cmn_reg(ECON1, data);
+
+	/* Write ECON1 register with target bank bits */
+	SpiEthBasicTx[0] = (uint8) ((WR_REG_OPCODE) | (ECON1));
+	bank = ((reg & 0x3F00) >> 8);
+	SpiEthBasicTx[1] = data | (bank & 0x03);
+	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
+		pr_log("%s: Spi Sync Tx failure[2]!\n", __func__);
+		return FALSE;
+	}
 
 	return TRUE;
 }
@@ -114,7 +93,7 @@ static inline boolean enc28j60_switch_bank(uint16 reg) {
 
 
 //////////////////////////////////////////////
-// Basic ENC28J60 Primitive Functions 
+// Basic ENC28J60 Primitive - Register R/W
 uint8 enc28j60_read_reg(uint16 reg) {
 	// switch bank based on register
 	enc28j60_switch_bank(reg);
@@ -127,11 +106,6 @@ uint8 enc28j60_read_reg(uint16 reg) {
 	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
 		pr_log("%s: Spi Sync Tx failure!\n", __func__);
 		return 0xFF;
-	}
-
-	// if the read operation is on common registers, take a copy
-	if (reg & 0x4000) {
-		enc28j60_set_cmn_reg(reg, SpiEthBasicRx[1]);
 	}
 
 	/* Though ENC28J60 supports MOTOROLA SPI format, but in RPi Pico / ARM 
@@ -163,11 +137,6 @@ boolean enc28j60_write_reg(uint16 reg, uint8 data) {
 		return FALSE;
 	}
 
-	// if the write operation is on common registers, take a copy
-	if (reg & 0x4000) {
-		enc28j60_set_cmn_reg(reg, data);
-	}
-
 	return TRUE;	
 }
 
@@ -185,6 +154,84 @@ boolean enc28j60_sys_cmd(uint8 cmd) {
 }
 
 
+
+//////////////////////////////////////////////
+// Basic ENC28J60 Primitive - Bit Set/Clear
+static inline boolean enc28j60_bit_ops_reg(uint8 opcode, uint16 reg, uint8 data) {
+	uint8 dlen = 2;
+
+	// switch bank based on register
+	enc28j60_switch_bank(reg);
+
+	/* MAC, MII register check */
+	if (reg & 0x8000) {
+		// bit operations can be done only for Ethernet control registers
+		return FALSE;
+	}
+
+	/* For the up-comming transmission, we just need to send/recv 1+1 byte */
+	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen);
+
+	SpiEthBasicTx[0] = (uint8) ((opcode) | (reg & 0xff));
+	SpiEthBasicTx[dlen-1] = data;
+	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
+		pr_log("%s: Spi Sync Tx failure!\n", __func__);
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+
+boolean enc28j60_bitset_reg(uint16 reg, uint8 data) {
+	return enc28j60_bit_ops_reg(BT_SET_OPCODE, reg, data);
+}
+
+
+boolean enc28j60_bitclr_reg(uint16 reg, uint8 data) {
+	return enc28j60_bit_ops_reg(BT_CLR_OPCODE, reg, data);
+}
+
+
+
+//////////////////////////////////////////////
+// Basic ENC28J60 Primitive - PHY R/W
+boolean enc28j60_check_phy_busy(void) {
+	boolean phy_busy = FALSE; // lets assume that PHY is idle
+	uint8 cnt = 10; // let us not loop for ever
+
+	while(1) {
+		if (!(enc28j60_read_reg(MISTAT) & MISTAT_BUSY)) {
+			break;
+		}
+		cnt--;
+		if (cnt == 0) {
+			phy_busy = TRUE;
+			break;
+		}
+	}
+
+	return phy_busy;
+}
+
+
+
+uint16 enc28j60_read_phy(uint8 phyaddr) {
+	uint16 phyreg = 0xffff;
+
+	// return if PHY is not free even after few retries
+	if (enc28j60_check_phy_busy()) {
+		return phyreg;
+	}
+
+	enc28j60_write_reg(MIREGADR, phyaddr);
+	// FIXME: incomplete
+
+	return phyreg;
+}
+
+
+
 //////////////////////////////////////////////
 // Global Functions
 boolean macphy_init(const uint8 *mac_addr) {
@@ -193,8 +240,9 @@ boolean macphy_init(const uint8 *mac_addr) {
 		return FALSE;
 	}
 
-	/* reset the chip first */
+	/* reset the chip first, set bank to 0 */
 	enc28j60_sys_cmd(SC_RST_OPCODE);
+	enc28j60_bitclr_reg(ECON1, 0x03);
 
 	/* set buffer memory layout - Rx */
 	enc28j60_write_reg(ERXSTL, (uint8)(RX_BUF_BEG & 0xFF));
