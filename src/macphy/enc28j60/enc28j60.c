@@ -277,6 +277,70 @@ boolean enc28j60_write_phy(uint8 phyaddr, uint16 data) {
 
 
 //////////////////////////////////////////////
+// Basic ENC28J60 Primitive - Memory R/W
+boolean enc28j60_read_mem(uint8 *dptr, uint16 dlen) {
+	int i;
+
+	/* check if data+1-byte_read opcode can fit into Rx Buffer */
+	if (dlen+1 > SPI_ETH_BASIC_CHAN_LEN) {
+		pr_log("%s(): dlen = %d greater than max = %d bytes\n",
+			__func__, dlen, SPI_ETH_BASIC_CHAN_LEN);
+			return FALSE;
+	}
+
+	/* For the up-comming transaction Tx line will be in high impedence state
+	hence we are not clearing the SpiEthBasicTx buffer. Also SpiEthBasicRx will
+	be filled by the Spi, so it is not cleared either */
+	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen+1);
+
+	/* Do the SPI reception */
+	SpiEthBasicTx[0] = (uint8) (RD_MEM_OPCODE);
+	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
+		pr_log("%s: Spi Sync Rx failure!\n", __func__);
+		return FALSE;
+	}
+
+	/* copy data bytes to client buffer */
+	for (i = 0; i < dlen; i++) {
+		dptr[i] = SpiEthBasicRx[i+1];
+	}
+
+	return TRUE;
+}
+
+
+
+boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen) {
+	int i;
+
+	/* check if data+1-byte_read opcode can fit into Tx Buffer */
+	if (dlen+1 > SPI_ETH_BASIC_CHAN_LEN) {
+		pr_log("%s(): dlen = %d greater than max = %d bytes\n",
+			__func__, dlen, SPI_ETH_BASIC_CHAN_LEN);
+			return FALSE;
+	}
+
+	/* For the up-comming transmission, we just need to send/recv 1+1 byte */
+	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen+1);
+
+	/* Setup Tx Buffer for Transmission */
+	SpiEthBasicTx[0] = (uint8)(WR_MEM_OPCODE);
+	for (i = 0; i < dlen; i++) {
+		SpiEthBasicTx[i+1] = dptr[i];
+	}
+
+	/* Do the SPI transfer */
+	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
+		pr_log("%s: Spi Sync Tx failure!\n", __func__);
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+
+
+//////////////////////////////////////////////
 // Global Functions
 boolean macphy_init(const uint8 *mac_addr) {
 	if (mac_addr == NULL) {
