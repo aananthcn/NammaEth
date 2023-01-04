@@ -39,6 +39,14 @@
 #define ECON2           (0x4000 | 0x1E)
 #define ECON1           (0x4000 | 0x1F)
 
+// ENC28J60 ESTAT Register Bit Definitions
+#define ESTAT_INT 	(0x80)
+#define ESTAT_LATECOL  	(0x10)
+#define ESTAT_RXBUSY    (0x04)
+#define ESTAT_TXABRT    (0x02)
+#define ESTAT_CLKRDY    (0x01)
+
+
 // ENC28J60 Bank-0 Registers
 #define ERDPTL          (0x0000 | 0x00)
 #define ERDPTH          (0x0000 | 0x01)

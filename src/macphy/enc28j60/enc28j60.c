@@ -28,12 +28,15 @@
 
 
 // Memory Buffer Layout (8k)
-#define BUFFER_BEG	0x0000
-#define BUFFER_END	0x1FFF
-#define TX_BUF_BEG	BUFFER_BEG
-#define TX_BUF_END	0x0FFF
-#define RX_BUF_BEG	0x1000
-#define RX_BUF_END	BUFFER_END
+#define BUFFER_BEG	(0x0000)
+#define BUFFER_END	(0x1FFF)
+#define TX_BUF_BEG	(BUFFER_BEG)
+#define TX_BUF_END	(0x0FFF)
+#define RX_BUF_BEG	(0x1000)
+#define RX_BUF_END	(BUFFER_END)
+
+#define TX_VECT_SZ      (8)
+#define RX_VECT_SZ      (4)
 
 // Frame configs
 #define MAX_FRMLEN	(1522)
@@ -42,6 +45,9 @@
 // Main Control & Status Registers
 // static uint8 Regs_Cmn[5] = {0x00, 0x00, 0x00, 0x80 /* AUTOINC = 0x1*/, 0x00};
 static MacPhyStateType ENC28J60_State;
+static uint32 PHY_Id;
+static uint8  PHY_Rev;
+static uint8  MAC_RevId;
 
 
 // BASIC ETHERNET Tx & Rx Buffers
@@ -50,6 +56,9 @@ uint8 SpiEthBasicTx[SPI_ETH_BASIC_CHAN_LEN];
 uint8 SpiEthBasicRx[SPI_ETH_BASIC_CHAN_LEN];
 
 
+// Local function prototypes
+boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen);
+
 
 //////////////////////////////////////////////
 // Local Functions
@@ -57,37 +66,37 @@ uint8 SpiEthBasicRx[SPI_ETH_BASIC_CHAN_LEN];
 /* This function switches bank based on bits[0:5] - bank number bits
 ** from passed argument (i.e., reg). */
 static inline boolean enc28j60_switch_bank(uint16 reg) {
-	uint8 data;
-	uint8 bank;
+        uint8 data;
+        uint8 bank;
 
-	// First, return if the target reg is a common register
-	if (0x4000 & reg) {
-		return TRUE; // bank switch is not required for common register
-	}
+        // First, return if the target reg is a common register
+        if (0x4000 & reg) {
+                return TRUE; // bank switch is not required for common register
+        }
 
-	/* For the up-comming transmission, we just need to send 1+1 byte */
-	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, 2);
+        /* For the up-comming transmission, we just need to send 1+1 byte */
+        Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, 2);
 
-	/* Read ECON1 register */
-	SpiEthBasicTx[0] = (uint8) ((RD_REG_OPCODE) | (ECON1));
-	SpiEthBasicTx[1] = 0; // dummy
-	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
-		pr_log("%s: Spi Sync Tx failure[1]!\n", __func__);
-		return FALSE;
-	}
-	data = SpiEthBasicRx[1] & 0xFC; // remove last 2 bits & read
+        /* Read ECON1 register */
+        SpiEthBasicTx[0] = (uint8) ((RD_REG_OPCODE) | (ECON1));
+        SpiEthBasicTx[1] = 0; // dummy
+        if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
+                pr_log("%s: Spi Sync Tx failure[1]!\n", __func__);
+                return FALSE;
+        }
+        data = SpiEthBasicRx[1] & 0xFC; // remove last 2 bits & read
 
 
-	/* Write ECON1 register with target bank bits */
-	SpiEthBasicTx[0] = (uint8) ((WR_REG_OPCODE) | (ECON1));
-	bank = ((reg & 0x3F00) >> 8);
-	SpiEthBasicTx[1] = data | (bank & 0x03);
-	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
-		pr_log("%s: Spi Sync Tx failure[2]!\n", __func__);
-		return FALSE;
-	}
+        /* Write ECON1 register with target bank bits */
+        SpiEthBasicTx[0] = (uint8) ((WR_REG_OPCODE) | (ECON1));
+        bank = ((reg & 0x3F00) >> 8);
+        SpiEthBasicTx[1] = data | (bank & 0x03);
+        if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
+                pr_log("%s: Spi Sync Tx failure[2]!\n", __func__);
+                return FALSE;
+        }
 
-	return TRUE;
+        return TRUE;
 }
 
 
@@ -95,64 +104,64 @@ static inline boolean enc28j60_switch_bank(uint16 reg) {
 //////////////////////////////////////////////
 // Basic ENC28J60 Primitive - Register R/W
 uint8 enc28j60_read_reg(uint16 reg) {
-	uint8 dlen = 2;
+        uint8 dlen = 2;
 
-	// switch bank based on register
-	enc28j60_switch_bank(reg);
+        // switch bank based on register
+        enc28j60_switch_bank(reg);
 
-	/* MAC, MII register check */
-	if (reg & 0x8000) {
-		dlen = 3;
-		SpiEthBasicTx[dlen-2] = 0x00; // dummy byte
-	}
+        /* MAC, MII register check */
+        if (reg & 0x8000) {
+                dlen = 3;
+                SpiEthBasicTx[dlen-2] = 0x00; // dummy byte
+        }
 
-	/* For the up-comming transmission, we just need to send/recv 1+1 byte */
-	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen);
+        /* For the up-comming transmission, we just need to send/recv 1+1 byte */
+        Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen);
 
-	SpiEthBasicTx[0] = (uint8) ((RD_REG_OPCODE) | (reg & 0xff));
-	SpiEthBasicTx[dlen-1] = 0x00; // dummy 2nd byte for MII or MAC registers
-	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
-		pr_log("%s: Spi Sync Tx failure!\n", __func__);
-		return 0xFF;
-	}
+        SpiEthBasicTx[0] = (uint8) ((RD_REG_OPCODE) | (reg & 0xff));
+        SpiEthBasicTx[dlen-1] = 0x00; // dummy 2nd byte for MII or MAC registers
+        if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
+                pr_log("%s: Spi Sync Tx failure!\n", __func__);
+                return 0xFF;
+        }
 
-	/* Though ENC28J60 supports MOTOROLA SPI format, but in RPi Pico / ARM 
-	implementation, data received in response to the dummy 2nd byte  */
-	return SpiEthBasicRx[dlen-1];
+        /* Though ENC28J60 supports MOTOROLA SPI format, but in RPi Pico / ARM 
+        implementation, data received in response to the dummy 2nd byte  */
+        return SpiEthBasicRx[dlen-1];
 }
 
 
 
 boolean enc28j60_write_reg(uint16 reg, uint8 data) {
-	uint8 dlen = 2;
+        uint8 dlen = 2;
 
-	// switch bank based on register
-	enc28j60_switch_bank(reg);
+        // switch bank based on register
+        enc28j60_switch_bank(reg);
 
-	/* For the up-comming transmission, we just need to send/recv 1+1 byte */
-	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen);
+        /* For the up-comming transmission, we just need to send/recv 1+1 byte */
+        Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen);
 
-	SpiEthBasicTx[0] = (uint8) ((WR_REG_OPCODE) | (reg & 0xff));
-	SpiEthBasicTx[dlen-1] = data;
-	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
-		pr_log("%s: Spi Sync Tx failure!\n", __func__);
-		return FALSE;
-	}
+        SpiEthBasicTx[0] = (uint8) ((WR_REG_OPCODE) | (reg & 0xff));
+        SpiEthBasicTx[dlen-1] = data;
+        if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
+                pr_log("%s: Spi Sync Tx failure!\n", __func__);
+                return FALSE;
+        }
 
-	return TRUE;	
+        return TRUE;	
 }
 
 
 boolean enc28j60_sys_cmd(uint8 cmd) {
-	/* For the up-comming transmission, we just need to send 1 byte */
-	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, 1);
-	SpiEthBasicTx[0] = (uint8) (cmd);
-	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
-		pr_log("%s: Spi Sync Tx failure!\n", __func__);
-		return FALSE;
-	}
+        /* For the up-comming transmission, we just need to send 1 byte */
+        Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, 1);
+        SpiEthBasicTx[0] = (uint8) (cmd);
+        if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
+                pr_log("%s: Spi Sync Tx failure!\n", __func__);
+                return FALSE;
+        }
 
-	return TRUE;
+        return TRUE;
 }
 
 
@@ -160,38 +169,38 @@ boolean enc28j60_sys_cmd(uint8 cmd) {
 //////////////////////////////////////////////
 // Basic ENC28J60 Primitive - Bit Set/Clear
 static inline boolean enc28j60_bit_ops_reg(uint8 opcode, uint16 reg, uint8 data) {
-	uint8 dlen = 2;
+        uint8 dlen = 2;
 
-	/* MAC, MII register check */
-	if (reg & 0x8000) {
-		// bit operations can be done only for Ethernet control registers
-		return FALSE;
-	}
+        /* MAC, MII register check */
+        if (reg & 0x8000) {
+                // bit operations can be done only for Ethernet control registers
+                return FALSE;
+        }
 
-	// switch bank based on register
-	enc28j60_switch_bank(reg);
+        // switch bank based on register
+        enc28j60_switch_bank(reg);
 
-	/* For the up-comming transmission, we just need to send/recv 1+1 byte */
-	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen);
+        /* For the up-comming transmission, we just need to send/recv 1+1 byte */
+        Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen);
 
-	SpiEthBasicTx[0] = (uint8) ((opcode) | (reg & 0xff));
-	SpiEthBasicTx[dlen-1] = data;
-	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
-		pr_log("%s: Spi Sync Tx failure!\n", __func__);
-		return FALSE;
-	}
+        SpiEthBasicTx[0] = (uint8) ((opcode) | (reg & 0xff));
+        SpiEthBasicTx[dlen-1] = data;
+        if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
+                pr_log("%s: Spi Sync Tx failure!\n", __func__);
+                return FALSE;
+        }
 
-	return TRUE;
+        return TRUE;
 }
 
 
 boolean enc28j60_bitset_reg(uint16 reg, uint8 data) {
-	return enc28j60_bit_ops_reg(BT_SET_OPCODE, reg, data);
+        return enc28j60_bit_ops_reg(BT_SET_OPCODE, reg, data);
 }
 
 
 boolean enc28j60_bitclr_reg(uint16 reg, uint8 data) {
-	return enc28j60_bit_ops_reg(BT_CLR_OPCODE, reg, data);
+        return enc28j60_bit_ops_reg(BT_CLR_OPCODE, reg, data);
 }
 
 
@@ -199,79 +208,79 @@ boolean enc28j60_bitclr_reg(uint16 reg, uint8 data) {
 //////////////////////////////////////////////
 // Basic ENC28J60 Primitive - PHY R/W
 boolean enc28j60_check_phy_busy(void) {
-	boolean phy_busy = FALSE; // lets assume that PHY is idle
-	uint8 mstat;
-	uint8 cnt = 10; // let us not loop for ever
+        boolean phy_busy = FALSE; // lets assume that PHY is idle
+        uint8 mstat;
+        uint8 cnt = 10; // let us not loop for ever
 
-	while(1) {
-		mstat = enc28j60_read_reg(MISTAT);
-		if (!(mstat & MISTAT_BUSY)) {
-			break;
-		}
-		cnt--;
-		if (cnt == 0) {
-			phy_busy = TRUE;
-			break;
-		}
-	}
+        while(1) {
+                mstat = enc28j60_read_reg(MISTAT);
+                if (!(mstat & MISTAT_BUSY)) {
+                        break;
+                }
+                cnt--;
+                if (cnt == 0) {
+                        phy_busy = TRUE;
+                        break;
+                }
+        }
 
-	return phy_busy;
+        return phy_busy;
 }
 
 
 
 uint16 enc28j60_read_phy(uint8 phyaddr) {
-	uint16 phyreg = 0xffff;
-	boolean phybusy;
-	uint8 hig, low;
+        uint16 phyreg = 0xffff;
+        boolean phybusy;
+        uint8 hig, low;
 
-	// return if PHY is not free even after few retries
-	if (enc28j60_check_phy_busy()) {
-		pr_log("%s(): wait period exceeded [1]\n");
-		return phyreg;
-	}
+        // return if PHY is not free even after few retries
+        if (enc28j60_check_phy_busy()) {
+                pr_log("%s(): wait period exceeded [1]\n");
+                return phyreg;
+        }
 
-	// write the address of the PHY register to read
-	enc28j60_write_reg(MIREGADR, phyaddr);
+        // write the address of the PHY register to read
+        enc28j60_write_reg(MIREGADR, phyaddr);
 
-	// set the MICMD.MIIRD bit
-	enc28j60_write_reg(MICMD, MICMD_MIIRD);
+        // set the MICMD.MIIRD bit
+        enc28j60_write_reg(MICMD, MICMD_MIIRD);
 
-	// wait 10.24us and poll MSTAT.BUSY bit
-	phybusy = enc28j60_check_phy_busy();
+        // wait 10.24us and poll MSTAT.BUSY bit
+        phybusy = enc28j60_check_phy_busy();
 
-	// clear the MICMD.MIIRD bit
-	enc28j60_write_reg(MICMD, 0x00);
-	if (phybusy) {
-		pr_log("%s(): wait period exceeded [2]\n");
-		return phyreg;
-	}
+        // clear the MICMD.MIIRD bit
+        enc28j60_write_reg(MICMD, 0x00);
+        if (phybusy) {
+                pr_log("%s(): wait period exceeded [2]\n");
+                return phyreg;
+        }
 
-	// read desired data from MIRDL and MIRDH (order is important)
-	low = enc28j60_read_reg(MIRDL);
-	hig = enc28j60_read_reg(MIRDH);
-	phyreg = (hig << 8 | low);
+        // read desired data from MIRDL and MIRDH (order is important)
+        low = enc28j60_read_reg(MIRDL);
+        hig = enc28j60_read_reg(MIRDH);
+        phyreg = (hig << 8 | low);
 
-	return phyreg;
+        return phyreg;
 }
 
 
 
 boolean enc28j60_write_phy(uint8 phyaddr, uint16 data) {
-	// write the address of the PHY register to read
-	enc28j60_write_reg(MIREGADR, phyaddr);
+        // write the address of the PHY register to read
+        enc28j60_write_reg(MIREGADR, phyaddr);
 
-	// write data low and high bytes
-	enc28j60_write_reg(MIWRL, (uint8)(data & 0xff));
-	enc28j60_write_reg(MIWRH, (uint8)(data >> 8));
+        // write data low and high bytes
+        enc28j60_write_reg(MIWRL, (uint8)(data & 0xff));
+        enc28j60_write_reg(MIWRH, (uint8)(data >> 8));
 
-	// wait 10.24us and poll MSTAT.BUSY bit
-	if (enc28j60_check_phy_busy()) {
-		pr_log("%s(): wait period exceeded\n");
-		return FALSE;
-	}
+        // wait 10.24us and poll MSTAT.BUSY bit
+        if (enc28j60_check_phy_busy()) {
+                pr_log("%s(): wait period exceeded\n");
+                return FALSE;
+        }
 
-	return TRUE;
+        return TRUE;
 }
 
 
@@ -279,63 +288,64 @@ boolean enc28j60_write_phy(uint8 phyaddr, uint16 data) {
 //////////////////////////////////////////////
 // Basic ENC28J60 Primitive - Memory R/W
 boolean enc28j60_read_mem(uint8 *dptr, uint16 dlen) {
-	int i;
+        int i;
 
-	/* check if data+1-byte_read opcode can fit into Rx Buffer */
-	if (dlen+1 > SPI_ETH_BASIC_CHAN_LEN) {
-		pr_log("%s(): dlen = %d greater than max = %d bytes\n",
-			__func__, dlen, SPI_ETH_BASIC_CHAN_LEN);
-			return FALSE;
-	}
+        /* check if data+1-byte_read opcode can fit into Rx Buffer */
+        if (dlen+1 > SPI_ETH_BASIC_CHAN_LEN) {
+                pr_log("%s(): dlen = %d greater than max = %d bytes\n",
+                        __func__, dlen, SPI_ETH_BASIC_CHAN_LEN);
+                        return FALSE;
+        }
 
-	/* For the up-comming transaction Tx line will be in high impedence state
-	hence we are not clearing the SpiEthBasicTx buffer. Also SpiEthBasicRx will
-	be filled by the Spi, so it is not cleared either */
-	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen+1);
+        /* For the up-comming transaction Tx line will be in high impedence state
+        hence we are not clearing the SpiEthBasicTx buffer. Also SpiEthBasicRx will
+        be filled by the Spi, so it is not cleared either */
+        Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen+1);
 
-	/* Do the SPI reception */
-	SpiEthBasicTx[0] = (uint8) (RD_MEM_OPCODE);
-	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
-		pr_log("%s: Spi Sync Rx failure!\n", __func__);
-		return FALSE;
-	}
+        /* Do the SPI reception */
+        SpiEthBasicTx[0] = (uint8) (RD_MEM_OPCODE);
+        if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
+                pr_log("%s: Spi Sync Rx failure!\n", __func__);
+                return FALSE;
+        }
 
-	/* copy data bytes to client buffer */
-	for (i = 0; i < dlen; i++) {
-		dptr[i] = SpiEthBasicRx[i+1];
-	}
+        /* copy data bytes to client buffer */
+        for (i = 0; i < dlen; i++) {
+                dptr[i] = SpiEthBasicRx[i+1];
+        }
 
-	return TRUE;
+        return TRUE;
 }
 
 
 
 boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen) {
-	int i;
+        int i;
 
-	/* check if data+1-byte_read opcode can fit into Tx Buffer */
-	if (dlen+1 > SPI_ETH_BASIC_CHAN_LEN) {
-		pr_log("%s(): dlen = %d greater than max = %d bytes\n",
-			__func__, dlen, SPI_ETH_BASIC_CHAN_LEN);
-			return FALSE;
-	}
+        /* check if data+2-byte_read opcode, dummy can fit into Tx Buffer */
+        if (dlen+2 > SPI_ETH_BASIC_CHAN_LEN) {
+                pr_log("%s(): dlen = %d greater than max = %d bytes\n",
+                        __func__, dlen, SPI_ETH_BASIC_CHAN_LEN);
+                        return FALSE;
+        }
 
-	/* For the up-comming transmission, we just need to send/recv 1+1 byte */
-	Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen+1);
+        /* For the up-comming transmission, we just need to send/recv 1+1 byte */
+        Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen+2);
 
-	/* Setup Tx Buffer for Transmission */
-	SpiEthBasicTx[0] = (uint8)(WR_MEM_OPCODE);
-	for (i = 0; i < dlen; i++) {
-		SpiEthBasicTx[i+1] = dptr[i];
-	}
+        /* Setup Tx Buffer for Transmission */
+        SpiEthBasicTx[0] = (uint8)(WR_MEM_OPCODE);
+        SpiEthBasicTx[1] = (uint8)(0x00); // dummy byte was added while debugging ARP test pkt, offset by 1 byte found!
+        for (i = 0; i < dlen; i++) {
+                SpiEthBasicTx[i+2] = dptr[i];
+        }
 
-	/* Do the SPI transfer */
-	if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
-		pr_log("%s: Spi Sync Tx failure!\n", __func__);
-		return FALSE;
-	}
+        /* Do the SPI transfer */
+        if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
+                pr_log("%s: Spi Sync Tx failure!\n", __func__);
+                return FALSE;
+        }
 
-	return TRUE;
+        return TRUE;
 }
 
 
@@ -343,62 +353,114 @@ boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen) {
 //////////////////////////////////////////////
 // Global Functions
 boolean macphy_init(const uint8 *mac_addr) {
-	if (mac_addr == NULL) {
-		pr_log("%s: invalid MAC address!\n", __func__);
-		return FALSE;
-	}
+        uint16 reg_bits;
 
-	/* reset the chip first, set bank to 0 */
-	enc28j60_sys_cmd(SC_RST_OPCODE);
-	enc28j60_bitclr_reg(ECON1, 0x03);
+        if (mac_addr == NULL) {
+                pr_log("%s: invalid MAC address!\n", __func__);
+                return FALSE;
+        }
 
-	/* set buffer memory layout - Rx */
-	enc28j60_write_reg(ERXSTL, (uint8)(RX_BUF_BEG & 0xFF));
-	enc28j60_write_reg(ERXSTH, (uint8)(RX_BUF_BEG >> 8));
-	enc28j60_write_reg(ERXNDL, (uint8)(RX_BUF_END & 0xFF));
-	enc28j60_write_reg(ERXNDH, (uint8)(RX_BUF_END >> 8));
+        /* reset the chip first, set bank to 0 */
+        enc28j60_sys_cmd(SC_RST_OPCODE);
+        enc28j60_bitclr_reg(ECON1, 0x03);
+        pr_log("This build uses MACPHY: ENC28J60\n");
 
-	/* set buffer memory layout - Tx */
-	enc28j60_write_reg(ETXSTL, (uint8)(TX_BUF_BEG & 0xFF));
-	enc28j60_write_reg(ETXSTH, (uint8)(TX_BUF_BEG >> 8));
-	enc28j60_write_reg(ETXNDL, (uint8)(TX_BUF_END & 0xFF));
-	enc28j60_write_reg(ETXNDH, (uint8)(TX_BUF_END >> 8));
+        /* read the chip revision IDs */
+        MAC_RevId = enc28j60_read_reg(EREVID);
+        pr_log("MAC RevID: 0x%02x\n", MAC_RevId);
 
-	/* set packet filter for reception */
-	enc28j60_write_reg(ERXFCON, ERXFCON_UCEN|ERXFCON_CRCEN|ERXFCON_BCEN);
+        reg_bits = enc28j60_read_phy(PHID1);
+        PHY_Id = reg_bits << 3; // bits[18:3]
+        reg_bits = enc28j60_read_phy(PHID2);
+        PHY_Id |= (reg_bits & 0xFC00) << (19-2); //bits[24:19]
+        PHY_Rev = (uint8) reg_bits & 0x0F;
+        pr_log("PHY ID: 0x%x\n", PHY_Id);
+        pr_log("PHY RevID: 0x%02x\n", PHY_Rev);
 
-	/* MAC configurations */
-	enc28j60_write_reg(MACON1, MACON1_MARXEN | MACON1_TXPAUS | MACON1_RXPAUS);
-	enc28j60_write_reg(MACON2, 0x00);
-	enc28j60_write_reg(MACON3, MACON3_PADCFG0 | MACON3_TXCRCEN | MACON3_FRMLNEN);
+        /* set buffer memory layout - Rx */
+        enc28j60_write_reg(ERXSTL, (uint8)(RX_BUF_BEG & 0xFF));
+        enc28j60_write_reg(ERXSTH, (uint8)(RX_BUF_BEG >> 8));
+        enc28j60_write_reg(ERXNDL, (uint8)(RX_BUF_END & 0xFF));
+        enc28j60_write_reg(ERXNDH, (uint8)(RX_BUF_END >> 8));
 
-	/* interframe gap configurations */
-	enc28j60_write_reg(MAIPGL, 0x12);
-	enc28j60_write_reg(MAIPGH, 0x0C);
-	enc28j60_write_reg(MABBIPG, 0x12);
+        /* set buffer memory layout - Tx */
+        enc28j60_write_reg(ETXSTL, (uint8)(TX_BUF_BEG & 0xFF));
+        enc28j60_write_reg(ETXSTH, (uint8)(TX_BUF_BEG >> 8));
+        enc28j60_write_reg(ETXNDL, (uint8)(TX_BUF_END & 0xFF));
+        enc28j60_write_reg(ETXNDH, (uint8)(TX_BUF_END >> 8));
 
-	/* max frame length configfigurations */
-	enc28j60_write_reg(MAMXFLL, (uint8)(MAX_FRMLEN & 0xFF));
-	enc28j60_write_reg(MAMXFLH, (uint8)(MAX_FRMLEN >> 8));
+        /* set packet filter for reception */
+        enc28j60_write_reg(ERXFCON, ERXFCON_UCEN|ERXFCON_CRCEN|ERXFCON_BCEN);
 
-	/* write MAC address - bit 48 on byte 0, hence reversed */
-	enc28j60_write_reg(MAADR5, mac_addr[0]);
-	enc28j60_write_reg(MAADR4, mac_addr[1]);
-	enc28j60_write_reg(MAADR3, mac_addr[2]);
-	enc28j60_write_reg(MAADR2, mac_addr[3]);
-	enc28j60_write_reg(MAADR1, mac_addr[4]);
-	enc28j60_write_reg(MAADR0, mac_addr[5]);
+        /* MAC configurations */
+        enc28j60_write_reg(MACON1, MACON1_MARXEN | MACON1_TXPAUS | MACON1_RXPAUS);
+        enc28j60_write_reg(MACON2, 0x00);
+        reg_bits = MACON3_PADCFG2 | MACON3_PADCFG0; // detect VLAN, pad 60 or 64 bytes, append CRC 
+        enc28j60_write_reg(MACON3, (uint8)(reg_bits | MACON3_TXCRCEN | MACON3_FRMLNEN));
 
-	/* Configure PHY */
-	enc28j60_write_phy(PHCON1, PHCON1_PDPXMD); // PHY in full-duplex
-	enc28j60_write_phy(PHLCON, 0x0CDA); // LED configurations
+        /* interframe gap configurations */
+        enc28j60_write_reg(MAIPGL, 0x12);
+        enc28j60_write_reg(MAIPGH, 0x0C);
+        enc28j60_write_reg(MABBIPG, 0x12);
 
-	/* Enable packet receiption */
-	enc28j60_bitset_reg(EIE, EIE_INTIE | EIE_PKTIE);
-	// enc28j60_bitset_reg(ECON1, ECON1_RXEN | ECON1_CSUMEN);
-	enc28j60_bitset_reg(ECON1, ECON1_RXEN);
+        /* max frame length configfigurations */
+        enc28j60_write_reg(MAMXFLL, (uint8)(MAX_FRMLEN & 0xFF));
+        enc28j60_write_reg(MAMXFLH, (uint8)(MAX_FRMLEN >> 8));
 
-	return TRUE;
+        /* write MAC address - bit 48 on byte 0, hence reversed */
+        enc28j60_write_reg(MAADR5, mac_addr[0]);
+        enc28j60_write_reg(MAADR4, mac_addr[1]);
+        enc28j60_write_reg(MAADR3, mac_addr[2]);
+        enc28j60_write_reg(MAADR2, mac_addr[3]);
+        enc28j60_write_reg(MAADR1, mac_addr[4]);
+        enc28j60_write_reg(MAADR0, mac_addr[5]);
+
+        /* Configure PHY */
+        enc28j60_write_phy(PHCON1, PHCON1_PDPXMD); // PHY in full-duplex
+        // LED-A (green): Tx activity, LED-B: Rx activity, LED Pulse Stretched = 139 ms
+        enc28j60_write_phy(PHLCON, 0x012A);
+
+        /* Enable packet receiption */
+        enc28j60_bitset_reg(EIE, EIE_INTIE | EIE_PKTIE);
+        enc28j60_bitset_reg(ECON1, ECON1_RXEN | ECON1_CSUMEN);
+
+        return TRUE;
+}
+
+
+boolean macphy_pkt_send(uint8 *pdptr, uint16 pdlen) {
+        uint8 regbits;
+        boolean tx_abort;
+
+        if (pdptr == NULL) {
+                return FALSE;
+        }
+
+        /* check if any transmit errors from previous attempt */
+        regbits = enc28j60_read_reg(ESTAT);
+        tx_abort = regbits & ESTAT_TXABRT;
+        if (tx_abort) {
+                enc28j60_bitclr_reg(ECON1, ECON1_TXRTS);
+        }
+
+        /* always move the Tx write pointer to start of the Tx memory */
+        enc28j60_write_reg(ETXSTL, (uint8)(TX_BUF_BEG & 0xFF));
+        enc28j60_write_reg(ETXSTH, (uint8)(TX_BUF_BEG >> 8));
+        enc28j60_write_reg(ETXNDL, (uint8)((TX_BUF_BEG + pdlen) & 0xFF));
+        enc28j60_write_reg(ETXNDH, (uint8)((TX_BUF_BEG + pdlen) >> 8));
+
+        /* copy the packet to MAC's Tx memory */
+        enc28j60_write_mem(pdptr, pdlen);
+        /* trigger the MAC to send the copied pkg */
+        enc28j60_bitset_reg(ECON1, ECON1_TXRTS);
+
+
+        /* Errata 12 - Transmit abort may stall transmit logic, revID <= 4 */
+        if (MAC_RevId <= 4) {
+                enc28j60_bitclr_reg(ECON1, ECON1_TXRTS);
+        }
+
+        return TRUE;
 }
 
 
