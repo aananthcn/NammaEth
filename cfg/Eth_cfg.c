@@ -38,7 +38,7 @@ const Eth_ConfigType EthConfigs[ETH_DRIVER_MAX_CHANNEL] = {
 			.mac_lr_spd = ETH_MAC_LAYER_SPEED_10M,
 			.mac_lr_typ = ETH_MAC_LAYER_TYPE_XMII,
 			.mac_sb_typ = STANDARD,
-			.mac_addres = {0x00, 0x00, 0x5e, 0x00, 0x53, 0x00},
+			.mac_addres = {0x00, 0x7D, 0xFA, 0xBA, 0xBA, 0x00},
 		},
 		.fifo_ig = {
 			.buff_len = 128,

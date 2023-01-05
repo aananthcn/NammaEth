@@ -322,19 +322,25 @@ boolean enc28j60_read_mem(uint8 *dptr, uint16 dlen) {
 boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen) {
         int i;
 
-        /* check if data+2-byte_read opcode, dummy can fit into Tx Buffer */
+        /* check if data+2-byte_read opcode, per-pkt ctrl-byte can fit into Tx Buffer */
         if (dlen+2 > SPI_ETH_BASIC_CHAN_LEN) {
                 pr_log("%s(): dlen = %d greater than max = %d bytes\n",
                         __func__, dlen, SPI_ETH_BASIC_CHAN_LEN);
                         return FALSE;
         }
 
+        /* always move the Tx write pointer to start of the Tx memory */
+        enc28j60_write_reg(ETXSTL, (uint8)(TX_BUF_BEG & 0xFF));
+        enc28j60_write_reg(ETXSTH, (uint8)(TX_BUF_BEG >> 8));
+        enc28j60_write_reg(ETXNDL, (uint8)((TX_BUF_BEG + dlen+1) & 0xFF));
+        enc28j60_write_reg(ETXNDH, (uint8)((TX_BUF_BEG + dlen+1) >> 8));
+
         /* For the up-comming transmission, we just need to send/recv 1+1 byte */
         Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen+2);
 
         /* Setup Tx Buffer for Transmission */
         SpiEthBasicTx[0] = (uint8)(WR_MEM_OPCODE);
-        SpiEthBasicTx[1] = (uint8)(0x00); // dummy byte was added while debugging ARP test pkt, offset by 1 byte found!
+        SpiEthBasicTx[1] = (uint8)(0x00); // per-packet control byte, refer section 7.1 of ENC28J60 manual
         for (i = 0; i < dlen; i++) {
                 SpiEthBasicTx[i+2] = dptr[i];
         }
@@ -352,6 +358,37 @@ boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen) {
 
 //////////////////////////////////////////////
 // Global Functions
+boolean macphy_pkt_send(uint8 *pdptr, uint16 pdlen) {
+        uint8 regbits;
+        boolean tx_abort;
+
+        if (pdptr == NULL) {
+                return FALSE;
+        }
+
+        /* check if any transmit errors from previous attempt */
+        regbits = enc28j60_read_reg(ESTAT);
+        tx_abort = regbits & ESTAT_TXABRT;
+        if (tx_abort) {
+                enc28j60_bitclr_reg(ECON1, ECON1_TXRTS);
+        }
+
+        /* copy the packet to MAC's Tx memory */
+        enc28j60_write_mem(pdptr, pdlen);
+        /* trigger the MAC to send the copied pkg */
+        enc28j60_bitset_reg(ECON1, ECON1_TXRTS);
+
+
+        /* Errata 12 - Transmit abort may stall transmit logic, revID <= 4 */
+        if (MAC_RevId <= 4) {
+                enc28j60_bitclr_reg(ECON1, ECON1_TXRTS);
+        }
+
+        return TRUE;
+}
+
+
+
 boolean macphy_init(const uint8 *mac_addr) {
         uint16 reg_bits;
 
@@ -423,42 +460,6 @@ boolean macphy_init(const uint8 *mac_addr) {
         /* Enable packet receiption */
         enc28j60_bitset_reg(EIE, EIE_INTIE | EIE_PKTIE);
         enc28j60_bitset_reg(ECON1, ECON1_RXEN | ECON1_CSUMEN);
-
-        return TRUE;
-}
-
-
-boolean macphy_pkt_send(uint8 *pdptr, uint16 pdlen) {
-        uint8 regbits;
-        boolean tx_abort;
-
-        if (pdptr == NULL) {
-                return FALSE;
-        }
-
-        /* check if any transmit errors from previous attempt */
-        regbits = enc28j60_read_reg(ESTAT);
-        tx_abort = regbits & ESTAT_TXABRT;
-        if (tx_abort) {
-                enc28j60_bitclr_reg(ECON1, ECON1_TXRTS);
-        }
-
-        /* always move the Tx write pointer to start of the Tx memory */
-        enc28j60_write_reg(ETXSTL, (uint8)(TX_BUF_BEG & 0xFF));
-        enc28j60_write_reg(ETXSTH, (uint8)(TX_BUF_BEG >> 8));
-        enc28j60_write_reg(ETXNDL, (uint8)((TX_BUF_BEG + pdlen) & 0xFF));
-        enc28j60_write_reg(ETXNDH, (uint8)((TX_BUF_BEG + pdlen) >> 8));
-
-        /* copy the packet to MAC's Tx memory */
-        enc28j60_write_mem(pdptr, pdlen);
-        /* trigger the MAC to send the copied pkg */
-        enc28j60_bitset_reg(ECON1, ECON1_TXRTS);
-
-
-        /* Errata 12 - Transmit abort may stall transmit logic, revID <= 4 */
-        if (MAC_RevId <= 4) {
-                enc28j60_bitclr_reg(ECON1, ECON1_TXRTS);
-        }
 
         return TRUE;
 }
