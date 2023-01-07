@@ -390,21 +390,62 @@ boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
 }
 
 
-#define NEXT_PKT_PTR_SZ (4)
+#define RX_PKT_HDR_SZ (6) /* 2 byte next pkt pointer + rx status vector */
 uint16 macphy_pkt_recv(uint8 *pktptr, uint16 maxlen) {
-        uint16 pktlen = 0;
+        uint16 pktlen;
+        static uint16 nxtpktptr = RX_BUF_BEG;
+        static uint16 rx_status;
+        uint8 rx_pkt_hdr[RX_PKT_HDR_SZ];
         uint8 regbits;
-        uint8 nxtpktptr[NEXT_PKT_PTR_SZ];
 
         regbits = enc28j60_read_reg(EPKTCNT);
         if (!regbits) {
                 return 0;
         }
 
-        enc28j60_read_mem(nxtpktptr, 2);
-        pr_log("Next Pkt Ptr: %0x %0x\n", nxtpktptr[1], nxtpktptr[0]);
+        /* set the read pointer to the start of the next packet */
+        enc28j60_write_reg(ERDPTL, LO_BYTE(nxtpktptr));
+        enc28j60_write_reg(ERDPTH, HI_BYTE(nxtpktptr));
+
+        /* read next pkt pointer and rx status vector */
+        enc28j60_read_mem(rx_pkt_hdr, RX_PKT_HDR_SZ);
+
+        /* as per figure 7-3 of datasheet (page - 45), read next pkt pointer */
+        nxtpktptr = rx_pkt_hdr[0]; // low byte
+        nxtpktptr |= (rx_pkt_hdr[1] << 8); // high byte
+
+        /* read length (incl. crc + padding) as per table 7-3 (page - 46) */
+        pktlen = rx_pkt_hdr[2];
+        pktlen |= rx_pkt_hdr[3] << 8;
+        pktlen -= 4; // crc len
+
+        /* limit the upcoming read size based on client memory size */
+        if (pktlen > maxlen) {
+                pktlen = maxlen;
+        }
+
+        /* read status, errors bits */
+        rx_status = rx_pkt_hdr[4];
+        rx_status |= (rx_pkt_hdr[5] << 8);
+
+        /* copy the new message from ENCJ60 hardware to client buffer, if ok */
+        if (rx_status & 0x80) {
+                enc28j60_read_mem(pktptr, pktlen);
+        }
+        else {
+                pktlen = 0; // Rx error present, hence ignore the packet
+        }
+
+        /* move Rx read pointer to nxtpktptr to free up buffer space in HW */
+        enc28j60_write_reg(ERXRDPTL, LO_BYTE(nxtpktptr));
+        enc28j60_write_reg(ERXRDPTH, HI_BYTE(nxtpktptr));
+
+        /* inform HW that we are done with the reading of current packet */
         enc28j60_bitset_reg(ECON2, ECON2_PKTDEC);
 
+#if defined(DEBUG_ENC28J60)
+        pr_log("rx_status = 0x%04x, next_pkt_ptr = 0x%04x\n", rx_status, nxtpktptr);
+#endif
         return pktlen;
 }
 
