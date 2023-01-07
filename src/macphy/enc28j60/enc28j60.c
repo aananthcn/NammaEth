@@ -330,10 +330,12 @@ boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen) {
         }
 
         /* always move the Tx write pointer to start of the Tx memory */
-        enc28j60_write_reg(ETXSTL, (uint8)(TX_BUF_BEG & 0xFF));
-        enc28j60_write_reg(ETXSTH, (uint8)(TX_BUF_BEG >> 8));
-        enc28j60_write_reg(ETXNDL, (uint8)((TX_BUF_BEG + dlen+1) & 0xFF));
-        enc28j60_write_reg(ETXNDH, (uint8)((TX_BUF_BEG + dlen+1) >> 8));
+        enc28j60_write_reg(ETXSTL, LO_BYTE(TX_BUF_BEG));
+        enc28j60_write_reg(ETXSTH, HI_BYTE(TX_BUF_BEG));
+        enc28j60_write_reg(ETXNDL, LO_BYTE(TX_BUF_BEG+dlen+1));
+        enc28j60_write_reg(ETXNDH, HI_BYTE(TX_BUF_BEG+dlen+1));
+        enc28j60_write_reg(EWRPTL, LO_BYTE(TX_BUF_BEG));
+        enc28j60_write_reg(EWRPTH, HI_BYTE(TX_BUF_BEG));
 
         /* For the up-comming transmission, we just need to send/recv 1+1 byte */
         Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen+2);
@@ -358,11 +360,11 @@ boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen) {
 
 //////////////////////////////////////////////
 // Global Functions
-boolean macphy_pkt_send(uint8 *pdptr, uint16 pdlen) {
+boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
         uint8 regbits;
         boolean tx_abort;
 
-        if (pdptr == NULL) {
+        if (pktptr == NULL) {
                 return FALSE;
         }
 
@@ -374,7 +376,7 @@ boolean macphy_pkt_send(uint8 *pdptr, uint16 pdlen) {
         }
 
         /* copy the packet to MAC's Tx memory */
-        enc28j60_write_mem(pdptr, pdlen);
+        enc28j60_write_mem(pktptr, pktlen);
         /* trigger the MAC to send the copied pkg */
         enc28j60_bitset_reg(ECON1, ECON1_TXRTS);
 
@@ -385,6 +387,25 @@ boolean macphy_pkt_send(uint8 *pdptr, uint16 pdlen) {
         }
 
         return TRUE;
+}
+
+
+#define NEXT_PKT_PTR_SZ (4)
+uint16 macphy_pkt_recv(uint8 *pktptr, uint16 maxlen) {
+        uint16 pktlen = 0;
+        uint8 regbits;
+        uint8 nxtpktptr[NEXT_PKT_PTR_SZ];
+
+        regbits = enc28j60_read_reg(EPKTCNT);
+        if (!regbits) {
+                return 0;
+        }
+
+        enc28j60_read_mem(nxtpktptr, 2);
+        pr_log("Next Pkt Ptr: %0x %0x\n", nxtpktptr[1], nxtpktptr[0]);
+        enc28j60_bitset_reg(ECON2, ECON2_PKTDEC);
+
+        return pktlen;
 }
 
 
@@ -415,34 +436,43 @@ boolean macphy_init(const uint8 *mac_addr) {
         pr_log("PHY RevID: 0x%02x\n", PHY_Rev);
 
         /* set buffer memory layout - Rx */
-        enc28j60_write_reg(ERXSTL, (uint8)(RX_BUF_BEG & 0xFF));
-        enc28j60_write_reg(ERXSTH, (uint8)(RX_BUF_BEG >> 8));
-        enc28j60_write_reg(ERXNDL, (uint8)(RX_BUF_END & 0xFF));
-        enc28j60_write_reg(ERXNDH, (uint8)(RX_BUF_END >> 8));
+        enc28j60_write_reg(ERXSTL, LO_BYTE(RX_BUF_BEG));
+        enc28j60_write_reg(ERXSTH, HI_BYTE(RX_BUF_BEG));
+        enc28j60_write_reg(ERXNDL, LO_BYTE(RX_BUF_END));
+        enc28j60_write_reg(ERXNDH, HI_BYTE(RX_BUF_END));
+        enc28j60_write_reg(ERXRDPTL, LO_BYTE(RX_BUF_END));
+        enc28j60_write_reg(ERXRDPTH, HI_BYTE(RX_BUF_END));
 
         /* set buffer memory layout - Tx */
-        enc28j60_write_reg(ETXSTL, (uint8)(TX_BUF_BEG & 0xFF));
-        enc28j60_write_reg(ETXSTH, (uint8)(TX_BUF_BEG >> 8));
-        enc28j60_write_reg(ETXNDL, (uint8)(TX_BUF_END & 0xFF));
-        enc28j60_write_reg(ETXNDH, (uint8)(TX_BUF_END >> 8));
+        enc28j60_write_reg(ETXSTL, LO_BYTE(TX_BUF_BEG));
+        enc28j60_write_reg(ETXSTH, HI_BYTE(TX_BUF_BEG));
+        enc28j60_write_reg(ETXNDL, LO_BYTE(TX_BUF_END));
+        enc28j60_write_reg(ETXNDH, HI_BYTE(TX_BUF_END));
+        enc28j60_write_reg(EWRPTL, LO_BYTE(TX_BUF_BEG));
+        enc28j60_write_reg(EWRPTH, HI_BYTE(TX_BUF_BEG));
 
         /* set packet filter for reception */
-        enc28j60_write_reg(ERXFCON, ERXFCON_UCEN|ERXFCON_CRCEN|ERXFCON_BCEN);
+        enc28j60_write_reg(ERXFCON, ERXFCON_UCEN | ERXFCON_CRCEN | ERXFCON_BCEN);
 
         /* MAC configurations */
         enc28j60_write_reg(MACON1, MACON1_MARXEN | MACON1_TXPAUS | MACON1_RXPAUS);
         enc28j60_write_reg(MACON2, 0x00);
-        reg_bits = MACON3_PADCFG2 | MACON3_PADCFG0; // detect VLAN, pad 60 or 64 bytes, append CRC 
+        reg_bits = MACON3_PADCFG1 | MACON3_PADCFG0; // pad to 64 bytes + CRC
+#if defined(MACPHY_HALF_DUPLEX)
         enc28j60_write_reg(MACON3, (uint8)(reg_bits | MACON3_TXCRCEN | MACON3_FRMLNEN));
+        enc28j60_write_reg(MABBIPG, 0x12);
+#else
+        enc28j60_write_reg(MACON3, (uint8)(reg_bits | MACON3_TXCRCEN | MACON3_FRMLNEN | MACON3_FULDPX));
+        enc28j60_write_reg(MABBIPG, 0x15);
+#endif
 
-        /* interframe gap configurations */
+        /* other interframe gap configurations */
         enc28j60_write_reg(MAIPGL, 0x12);
         enc28j60_write_reg(MAIPGH, 0x0C);
-        enc28j60_write_reg(MABBIPG, 0x12);
 
         /* max frame length configfigurations */
-        enc28j60_write_reg(MAMXFLL, (uint8)(MAX_FRMLEN & 0xFF));
-        enc28j60_write_reg(MAMXFLH, (uint8)(MAX_FRMLEN >> 8));
+        enc28j60_write_reg(MAMXFLL, HI_BYTE(MAX_FRMLEN));
+        enc28j60_write_reg(MAMXFLH, LO_BYTE(MAX_FRMLEN));
 
         /* write MAC address - bit 48 on byte 0, hence reversed */
         enc28j60_write_reg(MAADR5, mac_addr[0]);
@@ -453,7 +483,11 @@ boolean macphy_init(const uint8 *mac_addr) {
         enc28j60_write_reg(MAADR0, mac_addr[5]);
 
         /* Configure PHY */
+#if defined(MACPHY_HALF_DUPLEX)
+        enc28j60_write_phy(PHCON1, 0x0000);
+#else
         enc28j60_write_phy(PHCON1, PHCON1_PDPXMD); // PHY in full-duplex
+#endif
         // LED-A (green): Tx activity, LED-B: Rx activity, LED Pulse Stretched = 139 ms
         enc28j60_write_phy(PHLCON, 0x012A);
 

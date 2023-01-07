@@ -47,9 +47,16 @@ typedef enum {
 } MacPhyStateType;
 
 
+
+// Macros
+#define LO_BYTE(x) ((uint8)((x) & 0xFF))
+#define HI_BYTE(x) ((uint8)((x) >> 8))
+
+
 // public functions
 boolean macphy_init(const uint8 *mac_addr);
-boolean macphy_pkt_send(uint8 *pdptr, uint16 pdlen);
+boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen);
+uint16  macphy_pkt_recv(uint8 *pktptr, uint16 maxlen);
 
 
 // private functions
