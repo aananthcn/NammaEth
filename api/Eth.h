@@ -24,6 +24,8 @@
 #include <Platform_Types.h>
 #include <Std_Types.h>
 #include <Eth_cfg.h>
+#include <ComStack_Types.h>
+#include <Eth_GeneralTypes.h>
 
 /* SpiStatusRegister bit fields */
 #define TRANSMIT_PROTOCOL_ERROR_BIT             (0x00)
@@ -50,5 +52,14 @@ typedef struct {
 
 void Eth_Init(const Eth_ConfigType* CfgPtr);
 
+
+BufReq_ReturnType Eth_ProvideTxBuffer(uint8 CtrlIdx, uint8 Priority, Eth_BufIdxType* BufIdxPtr,
+	uint8** BufPtr, uint16* LenBytePtr);
+
+Std_ReturnType Eth_Transmit(uint8 CtrlIdx, Eth_BufIdxType BufIdx, Eth_FrameType FrameType,
+	boolean TxConfirmation, uint16 LenByte, const uint8* PhysAddrPtr);
+
+void Eth_TxConfirmation(uint8 CtrlIdx);
+void Eth_Receive(uint8 CtrlIdx, uint8 FifoIdx, Eth_RxStatusType* RxStatusPtr);
 
 #endif

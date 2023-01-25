@@ -91,7 +91,7 @@ typedef struct {
 typedef struct {
 	uint8 MacAddr[6];
 	uint16 VlanId; /* Specifies the VLAN address 0..65535 */
-	Uint32 SwitchPort; /* Specifies the ports of the switch as bit mask (0x00000001->Port0, 0x80000001->Port31+Port0) */
+	uint32 SwitchPort; /* Specifies the ports of the switch as bit mask (0x00000001->Port0, 0x80000001->Port31+Port0) */
 } Eth_MacVlanType;
 
 
@@ -159,6 +159,154 @@ typedef struct {
 
 
 
+
+
+// switch
+typedef enum {
+	ETHSWT_STATE_UNINIT,
+	ETHSWT_STATE_INIT,
+	ETHSWT_STATE_PORTINIT_COMPLETED,
+	ETHSWT_STATE_ACTIVE,
+	ETHSWT_STATE_MAX
+} EthSwt_StateType;
+
+typedef enum {
+	ETHSWT_MACLEARNING_HWDISABLED,
+	ETHSWT_MACLEARNING_HWENABLED,
+	ETHSWT_MACLEARNING_SWENABLED,
+	ETHSWT_MACLEARNING_MAX
+} EthSwt_MacLearningType;
+
+typedef uint8 EthSwt_MgmtInfoType;
+
+typedef enum {
+	ETHSWT_MGMT_OBJ_UNUSED,
+	ETHSWT_MGMT_OBJ_OWNED_BY_ETHSWT,
+	ETHSWT_MGMT_OBJ_OWNED_BY_UPPER_LAYER,
+	ETHSWT_MGMT_OBJ_MAX
+} EthSwt_MgmtOwner;
+
+
+typedef struct {
+	Std_ReturnType IngressTimestampValid;
+	Std_ReturnType EgressTimestampValid;
+	Std_ReturnType MgmtInfoValid;
+} EthSwt_MgmtObjectValidType;
+
+
+typedef struct {
+	EthSwt_MgmtObjectValidType validation;
+	Eth_TimeStampType IngressTimestamp;
+	Eth_TimeStampType EgressTimestamp;
+	EthSwt_MgmtInfoType MgmtInfo;
+	EthSwt_MgmtOwner Ownership;
+} EthSwt_MgmtObjectType;
+
+
+typedef struct {
+	uint32 TrafficDirectionIngressBitMask;
+	uint32 TrafficDirectionEgressBitMask;
+	uint16 VlanIdFilter;
+	uint16 ReTaggingVlanId;
+	uint16 DoubleTaggingVlanId;
+	uint8 srcMacAddrFilter[6];
+	uint8 dstMacAddrFilter[6];
+	uint8 MirroringPacketDivider;
+	uint8 MirroringMode;
+	uint8 CapturePortIdx;
+} EthSwt_PortMirrorCfgType;
+
+
+typedef enum {
+	PORT_MIRRORING_DISABLED,
+	PORT_MIRRORING_ENABLED
+} EthSwt_PortMirrorStateType;
+
+
+
+
+
+
+// Transceiver
+typedef enum {
+	ETHTRCV_WUR_NONE ,
+	ETHTRCV_WUR_GENERAL,
+	ETHTRCV_WUR_INTERNAL,
+	ETHTRCV_WUR_RESET ,
+	ETHTRCV_WUR_POWER_ON,
+	ETHTRCV_WUR_PIN ,
+	ETHTRCV_WUR_SYSERR ,
+	ETHTRCV_WUR_WODL_WUP,
+	ETHTRCV_WUR_WODL_WUR,
+	ETHTRCV_WUR_TRANSFER,
+	ETHTRCV_WUR_MAX
+} EthTrcv_WakeupReasonType;
+
+
+
+typedef enum {
+	ETHTRCV_PHYTXMODE_NORMAL,
+	ETHTRCV_PHYTXMODE_TX_OFF,
+	ETHTRCV_PHYTXMODE_SCRAMBLER_OFF,
+	ETHTRCV_PHYTXMODE_MAX
+} EthTrcv_PhyTxModeType;
+
+
+typedef enum {
+	ETHTRCV_PHYTESTMODE_NONE,
+	ETHTRCV_PHYTESTMODE_1,
+	ETHTRCV_PHYTESTMODE_2,
+	ETHTRCV_PHYTESTMODE_3,
+	ETHTRCV_PHYTESTMODE_4,
+	ETHTRCV_PHYTESTMODE_5,
+	ETHTRCV_PHYTESTMODE_MAX
+} EthTrcv_PhyTestModeType;
+
+
+typedef enum {
+	ETHTRCV_PHYLOOPBACK_NONE,
+	ETHTRCV_PHYLOOPBACK_INTERNAL,
+	ETHTRCV_PHYLOOPBACK_EXTERNAL,
+	ETHTRCV_PHYLOOPBACK_REMOTE,
+	ETHTRCV_PHYLOOPBACK_MAX
+} EthTrcv_PhyLoopbackModeType;
+
+
+typedef enum {
+	ETHTRCV_CABLEDIAG_OK,
+	ETHTRCV_CABLEDIAG_ERROR,
+	ETHTRCV_CABLEDIAG_SHORT,
+	ETHTRCV_CABLEDIAG_OPEN,
+	ETHTRCV_CABLEDIAG_PENDING,
+	ETHTRCV_CABLEDIAG_WRONG_POLARITY,
+	ETHTRCV_CABLEDIAG_MAX
+} EthTrcv_CableDiagResultType;
+
+
+typedef enum {
+	ETHTRCV_LINK_STATE_DOWN,
+	ETHTRCV_LINK_STATE_ACTIVE
+} EthTrcv_LinkStateType;
+
+typedef enum {
+	ETHTRCV_BAUD_RATE_10MBIT,
+	ETHTRCV_BAUD_RATE_100MBIT,
+	ETHTRCV_BAUD_RATE_1000MBIT,
+	ETHTRCV_BAUD_RATE_2500MBIT,
+	ETHTRCV_BAUD_RATE_MAX
+} EthTrcv_BaudRateType;
+
+
+typedef enum {
+	ETHTRCV_DUPLEX_MODE_HALF,
+	ETHTRCV_DUPLEX_MODE_FULL
+} EthTrcv_DuplexModeType;
+
+
+typedef enum {
+	ETHTRCV_MAC_TYPE_CSMA_CD,
+	ETHTRCV_MAC_TYPE_PLCA
+} EthTrcv_MacMethodType;
 
 
 #endif

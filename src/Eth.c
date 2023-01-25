@@ -34,3 +34,31 @@ void Eth_Init(const Eth_ConfigType* CfgPtr) {
 	}
 }
 
+
+
+// Provides access to a transmit buffer of the specified Ethernet controller
+BufReq_ReturnType Eth_ProvideTxBuffer(uint8 CtrlIdx, uint8 Priority, Eth_BufIdxType* BufIdxPtr,
+	uint8** BufPtr, uint16* LenBytePtr) {
+
+	return BUFREQ_E_NOT_OK;
+}
+
+
+// Triggers frame transmission confirmation
+void Eth_TxConfirmation(uint8 CtrlIdx) {
+
+}
+
+
+// Receive a frame from the related fifo
+void Eth_Receive(uint8 CtrlIdx, uint8 FifoIdx, Eth_RxStatusType* RxStatusPtr) {
+
+}
+
+
+Std_ReturnType Eth_Transmit(uint8 CtrlIdx, Eth_BufIdxType BufIdx, Eth_FrameType FrameType,
+	boolean TxConfirmation, uint16 LenByte, const uint8* PhysAddrPtr) {
+	Std_ReturnType retc = E_NOT_OK;
+
+	return retc;
+}
