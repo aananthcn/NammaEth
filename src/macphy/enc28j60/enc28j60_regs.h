@@ -39,6 +39,15 @@
 #define ECON2           (0x4000 | 0x1E)
 #define ECON1           (0x4000 | 0x1F)
 
+// ENC28J60 EIR Register Bit Definitions
+#define EIR_PKTIF 	(0x40)
+#define EIR_DMAIF 	(0x20)
+#define EIR_LINKIF 	(0x10)
+#define EIR_TXIF 	(0x08)
+#define EIR_WOLIF 	(0x04)
+#define EIR_TXERIF 	(0x02)
+#define EIR_RXERIF 	(0x01)
+
 // ENC28J60 ESTAT Register Bit Definitions
 #define ESTAT_INT 	(0x80)
 #define ESTAT_LATECOL  	(0x10)
