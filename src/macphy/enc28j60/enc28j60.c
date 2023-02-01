@@ -365,6 +365,24 @@ boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem) {
 
 
 
+void send_pkt_from_mpool(int pidx, uint8 *pktptr, uint16 pktlen) {
+        /* copy the packet to MAC's Tx memory */
+        enc28j60_write_mem(pktptr, pktlen, get_pool_mem(pidx));
+        /* trigger the MAC to send the copied pkg */
+        enc28j60_bitset_reg(ECON1, ECON1_TXRTS);
+
+
+        /* Errata 12 - Transmit abort may stall transmit logic, revID <= 4 */
+        if (MAC_RevId <= 4) {
+                enc28j60_bitclr_reg(ECON1, ECON1_TXRTS);
+        }
+
+        /* tx will take time, hence free the memory pool in next round */
+        set_active_pool_idx(pidx);
+}
+
+
+
 //////////////////////////////////////////////
 // Global Functions
 boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
@@ -400,6 +418,7 @@ boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
                 if (regbits & ECON1_TXRTS) {
                         /* copy the packet to memory pool buffer */
                         memcpy(get_pool_mem(pidx)->tx_buf, pktptr, pktlen);
+                        get_pool_mem(pidx)->tx_len = pktlen;
                         return TRUE;
                 }
                 else {
@@ -408,22 +427,11 @@ boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
                 }
         }
 
-        /* copy the packet to MAC's Tx memory */
-        enc28j60_write_mem(pktptr, pktlen, get_pool_mem(pidx));
-        /* trigger the MAC to send the copied pkg */
-        enc28j60_bitset_reg(ECON1, ECON1_TXRTS);
-
-
-        /* Errata 12 - Transmit abort may stall transmit logic, revID <= 4 */
-        if (MAC_RevId <= 4) {
-                enc28j60_bitclr_reg(ECON1, ECON1_TXRTS);
-        }
-
-        /* tx will take time, hence free the memory pool in next round */
-        set_active_pool_idx(pidx);
+        send_pkt_from_mpool(pidx, pktptr, pktlen);
 
         return TRUE;
 }
+
 
 
 #define RX_PKT_HDR_SZ (6) /* 2 byte next pkt pointer + rx status vector */
@@ -494,6 +502,38 @@ uint16 macphy_pkt_recv(uint8 *pktptr, uint16 maxlen) {
         pr_log("rx_status = 0x%04x, next_pkt_ptr = 0x%04x\n", rx_status, nxtpktptr);
 #endif
         return pktlen;
+}
+
+
+
+void macphy_periodic_fn(void) {
+        int i;
+        uint8 *pktptr;
+        uint16 pktlen;
+
+        /* if data already queued into the mpool */
+        if (if_m_pool_has_data() == FALSE) {
+                return;
+        }
+
+        /* but, if enc28j60 is in transmission state */
+        if (get_active_pool_idx() != -1) {
+                return;
+        }
+
+        /* if code reaches here, then some data is in the pool & enc28j60 is idle */
+        for (i = 0; i < MEM_POOL_BUF_LEN; i++) {
+                if(if_m_pool_mem_in_use(i)) {
+                        pktptr = get_pool_mem(i)->tx_buf;
+                        pktlen = get_pool_mem(i)->tx_len;
+                        send_pkt_from_mpool(i, pktptr, pktlen);
+
+                        /* ENC28J60 can send one msg at a time, hence return */
+                        return;
+                }
+        }
+
+        m_pool_scan_complete();
 }
 
 
@@ -584,9 +624,4 @@ boolean macphy_init(const uint8 *mac_addr) {
         enc28j60_bitset_reg(ECON1, ECON1_RXEN | ECON1_CSUMEN);
 
         return TRUE;
-}
-
-
-void macphy_periodic_fn(void) {
-
 }

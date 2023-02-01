@@ -32,6 +32,7 @@
 typedef struct {
         uint8 tx_buf[MEM_POOL_BUF_LEN];
         uint8 rx_buf[MEM_POOL_BUF_LEN];
+        uint16 tx_len;
         boolean in_use;
 } MacSpiMemType;
 
@@ -43,6 +44,8 @@ void free_mem_pool(int idx);
 int get_active_pool_idx(void);
 void set_active_pool_idx(int idx);
 void clr_active_pool_idx();
-
+boolean if_m_pool_has_data(void);
+void m_pool_scan_complete(void);
+boolean if_m_pool_mem_in_use(int idx);
 
 #endif

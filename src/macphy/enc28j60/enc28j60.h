@@ -55,6 +55,7 @@ typedef enum {
 
 // public functions
 boolean macphy_init(const uint8 *mac_addr);
+void macphy_periodic_fn(void);
 boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen);
 uint16  macphy_pkt_recv(uint8 *pktptr, uint16 maxlen);
 
@@ -67,5 +68,6 @@ boolean enc28j60_bitclr_reg(uint16 reg, uint8 data);
 
 uint16 enc28j60_read_phy(uint8 phyaddr);
 boolean enc28j60_write_phy(uint8 phyaddr, uint16 data);
+
 
 #endif
