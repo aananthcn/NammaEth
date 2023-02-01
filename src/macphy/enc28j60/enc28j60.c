@@ -25,6 +25,7 @@
 #include <stddef.h>
 
 #include "enc28j60.h"
+#include <macphy_mpool.h>
 
 
 // Memory Buffer Layout (8k)
@@ -38,8 +39,6 @@
 #define TX_VECT_SZ      (8)
 #define RX_VECT_SZ      (4)
 
-// Frame configs
-#define MAX_FRMLEN	(1522)
 
 
 // Main Control & Status Registers
@@ -50,14 +49,18 @@ static uint8  PHY_Rev;
 static uint8  MAC_RevId;
 
 
-// BASIC ETHERNET Tx & Rx Buffers
-#define SPI_ETH_BASIC_CHAN_LEN	(2048)
-uint8 SpiEthBasicTx[SPI_ETH_BASIC_CHAN_LEN];
-uint8 SpiEthBasicRx[SPI_ETH_BASIC_CHAN_LEN];
+// Frame configs
+#define MAX_ETH_FRAME_LEN	(MEM_POOL_BUF_LEN)
+#define ENC28J60_BASIC_MSG_LEN	(32)
+
+uint8 SpiEthBasicTx[ENC28J60_BASIC_MSG_LEN];
+uint8 SpiEthBasicRx[ENC28J60_BASIC_MSG_LEN];
 
 
 // Local function prototypes
-boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen);
+boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem);
+boolean enc28j60_read_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem);
+
 
 
 //////////////////////////////////////////////
@@ -287,23 +290,25 @@ boolean enc28j60_write_phy(uint8 phyaddr, uint16 data) {
 
 //////////////////////////////////////////////
 // Basic ENC28J60 Primitive - Memory R/W
-boolean enc28j60_read_mem(uint8 *dptr, uint16 dlen) {
+boolean enc28j60_read_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem) {
         int i;
 
         /* check if data+1-byte_read opcode can fit into Rx Buffer */
-        if (dlen+1 > SPI_ETH_BASIC_CHAN_LEN) {
-                pr_log("%s(): dlen = %d greater than max = %d bytes\n",
-                        __func__, dlen, SPI_ETH_BASIC_CHAN_LEN);
+        if (dlen+1 > MAX_ETH_FRAME_LEN) {
+                pr_log("ERROR: %s(): dlen = %d greater than max = %d bytes\n",
+                        __func__, dlen, MAX_ETH_FRAME_LEN);
                         return FALSE;
         }
 
         /* For the up-comming transaction Tx line will be in high impedence state
-        hence we are not clearing the SpiEthBasicTx buffer. Also SpiEthBasicRx will
-        be filled by the Spi, so it is not cleared either */
-        Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen+1);
+        hence we are not clearing the Tx buffer. Also Rx buffer will be filled by
+        the Spi, so it is not cleared either */
+        // Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen+1);
+        Spi_SetupEB(0, spi_mem->tx_buf, spi_mem->rx_buf, dlen+1);
 
         /* Do the SPI reception */
-        SpiEthBasicTx[0] = (uint8) (RD_MEM_OPCODE);
+        // SpiEthBasicTx[0] = (uint8) (RD_MEM_OPCODE);
+        spi_mem->tx_buf[0] = (uint8) (RD_MEM_OPCODE);
         if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
                 pr_log("%s: Spi Sync Rx failure!\n", __func__);
                 return FALSE;
@@ -311,7 +316,8 @@ boolean enc28j60_read_mem(uint8 *dptr, uint16 dlen) {
 
         /* copy data bytes to client buffer */
         for (i = 0; i < dlen; i++) {
-                dptr[i] = SpiEthBasicRx[i+1];
+                // dptr[i] = SpiEthBasicRx[i+1];
+                dptr[i] = spi_mem->rx_buf[i+1];
         }
 
         return TRUE;
@@ -319,13 +325,13 @@ boolean enc28j60_read_mem(uint8 *dptr, uint16 dlen) {
 
 
 
-boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen) {
+boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem) {
         int i;
 
         /* check if data+2-byte_read opcode, per-pkt ctrl-byte can fit into Tx Buffer */
-        if (dlen+2 > SPI_ETH_BASIC_CHAN_LEN) {
+        if (dlen+2 > MAX_ETH_FRAME_LEN) {
                 pr_log("%s(): dlen = %d greater than max = %d bytes\n",
-                        __func__, dlen, SPI_ETH_BASIC_CHAN_LEN);
+                        __func__, dlen, MAX_ETH_FRAME_LEN);
                         return FALSE;
         }
 
@@ -338,13 +344,13 @@ boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen) {
         enc28j60_write_reg(EWRPTH, HI_BYTE(TX_BUF_BEG));
 
         /* For the up-comming transmission, we just need to send/recv 1+1 byte */
-        Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen+2);
+        Spi_SetupEB(0, spi_mem->tx_buf, spi_mem->rx_buf, dlen+2);
 
         /* Setup Tx Buffer for Transmission */
-        SpiEthBasicTx[0] = (uint8)(WR_MEM_OPCODE);
-        SpiEthBasicTx[1] = (uint8)(0x00); // per-packet control byte, refer section 7.1 of ENC28J60 manual
+        spi_mem->tx_buf[0] = (uint8)(WR_MEM_OPCODE);
+        spi_mem->tx_buf[1] = (uint8)(0x00); // per-packet control byte, refer section 7.1 of ENC28J60 manual
         for (i = 0; i < dlen; i++) {
-                SpiEthBasicTx[i+2] = dptr[i];
+                spi_mem->tx_buf[i+2] = dptr[i];
         }
 
         /* Do the SPI transfer */
@@ -361,10 +367,18 @@ boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen) {
 //////////////////////////////////////////////
 // Global Functions
 boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
+        int pidx;
         uint8 regbits;
         boolean tx_abort;
 
         if (pktptr == NULL) {
+                return FALSE;
+        }
+
+        /* get memory pool for ethernet frame transfer */
+        pidx = get_m_pool_index();
+        if (pidx < 0) {
+                pr_log("ERROR: %s() couldn't get a mem pool\n", __func__);
                 return FALSE;
         }
 
@@ -376,7 +390,7 @@ boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
         }
 
         /* copy the packet to MAC's Tx memory */
-        enc28j60_write_mem(pktptr, pktlen);
+        enc28j60_write_mem(pktptr, pktlen, get_pool_mem(pidx));
         /* trigger the MAC to send the copied pkg */
         enc28j60_bitset_reg(ECON1, ECON1_TXRTS);
 
@@ -386,12 +400,16 @@ boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
                 enc28j60_bitclr_reg(ECON1, ECON1_TXRTS);
         }
 
+        /* free the memory pool */
+        free_mem_pool(pidx);
+
         return TRUE;
 }
 
 
 #define RX_PKT_HDR_SZ (6) /* 2 byte next pkt pointer + rx status vector */
 uint16 macphy_pkt_recv(uint8 *pktptr, uint16 maxlen) {
+        int pidx;
         uint16 pktlen;
         static uint16 nxtpktptr = RX_BUF_BEG;
         static uint16 rx_status;
@@ -403,12 +421,19 @@ uint16 macphy_pkt_recv(uint8 *pktptr, uint16 maxlen) {
                 return 0;
         }
 
+        /* get memory pool for ethernet frame transfer */
+        pidx = get_m_pool_index();
+        if (pidx < 0) {
+                pr_log("ERROR: %s() couldn't get a mem pool\n", __func__);
+                return FALSE;
+        }
+
         /* set the read pointer to the start of the next packet */
         enc28j60_write_reg(ERDPTL, LO_BYTE(nxtpktptr));
         enc28j60_write_reg(ERDPTH, HI_BYTE(nxtpktptr));
 
         /* read next pkt pointer and rx status vector */
-        enc28j60_read_mem(rx_pkt_hdr, RX_PKT_HDR_SZ);
+        enc28j60_read_mem(rx_pkt_hdr, RX_PKT_HDR_SZ, get_pool_mem(pidx));
 
         /* as per figure 7-3 of datasheet (page - 45), read next pkt pointer */
         nxtpktptr = rx_pkt_hdr[0]; // low byte
@@ -430,7 +455,7 @@ uint16 macphy_pkt_recv(uint8 *pktptr, uint16 maxlen) {
 
         /* copy the new message from ENCJ60 hardware to client buffer, if ok */
         if (rx_status & 0x80) {
-                enc28j60_read_mem(pktptr, pktlen);
+                enc28j60_read_mem(pktptr, pktlen, get_pool_mem(pidx));
         }
         else {
                 pktlen = 0; // Rx error present, hence ignore the packet
@@ -442,6 +467,9 @@ uint16 macphy_pkt_recv(uint8 *pktptr, uint16 maxlen) {
 
         /* inform HW that we are done with the reading of current packet */
         enc28j60_bitset_reg(ECON2, ECON2_PKTDEC);
+
+        /* free the memory pool */
+        free_mem_pool(pidx);
 
 #if defined(DEBUG_ENC28J60)
         pr_log("rx_status = 0x%04x, next_pkt_ptr = 0x%04x\n", rx_status, nxtpktptr);
@@ -511,9 +539,9 @@ boolean macphy_init(const uint8 *mac_addr) {
         enc28j60_write_reg(MAIPGL, 0x12);
         enc28j60_write_reg(MAIPGH, 0x0C);
 
-        /* max frame length configfigurations */
-        enc28j60_write_reg(MAMXFLL, HI_BYTE(MAX_FRMLEN));
-        enc28j60_write_reg(MAMXFLH, LO_BYTE(MAX_FRMLEN));
+        /* max frame length configurations */
+        enc28j60_write_reg(MAMXFLL, HI_BYTE(MAX_ETH_FRAME_LEN));
+        enc28j60_write_reg(MAMXFLH, LO_BYTE(MAX_ETH_FRAME_LEN));
 
         /* write MAC address - bit 48 on byte 0, hence reversed */
         enc28j60_write_reg(MAADR5, mac_addr[0]);
