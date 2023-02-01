@@ -23,6 +23,7 @@
 #include <os_api.h>
 
 #include <stddef.h>
+#include <string.h>
 
 #include "enc28j60.h"
 #include <macphy_mpool.h>
@@ -367,7 +368,7 @@ boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem) {
 //////////////////////////////////////////////
 // Global Functions
 boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
-        int pidx;
+        int pidx, tx_pidx;
         uint8 regbits;
         boolean tx_abort;
 
@@ -389,6 +390,24 @@ boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
                 enc28j60_bitclr_reg(ECON1, ECON1_TXRTS);
         }
 
+        /* check if the previous tx request is completed */
+        tx_pidx = get_active_pool_idx();
+        if (tx_pidx > -1) {
+                /* trasnmission was initiated last time */
+                regbits = enc28j60_read_reg(ECON1);
+
+                /* check if the MACPHY is stil busy */
+                if (regbits & ECON1_TXRTS) {
+                        /* copy the packet to memory pool buffer */
+                        memcpy(get_pool_mem(pidx)->tx_buf, pktptr, pktlen);
+                        return TRUE;
+                }
+                else {
+                        free_mem_pool(tx_pidx);
+                        clr_active_pool_idx();
+                }
+        }
+
         /* copy the packet to MAC's Tx memory */
         enc28j60_write_mem(pktptr, pktlen, get_pool_mem(pidx));
         /* trigger the MAC to send the copied pkg */
@@ -400,8 +419,8 @@ boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
                 enc28j60_bitclr_reg(ECON1, ECON1_TXRTS);
         }
 
-        /* free the memory pool */
-        free_mem_pool(pidx);
+        /* tx will take time, hence free the memory pool in next round */
+        set_active_pool_idx(pidx);
 
         return TRUE;
 }

@@ -40,5 +40,9 @@ int get_m_pool_index(void);
 MacSpiMemType* get_pool_mem(int idx);
 void free_mem_pool(int idx);
 
+int get_active_pool_idx(void);
+void set_active_pool_idx(int idx);
+void clr_active_pool_idx();
+
 
 #endif

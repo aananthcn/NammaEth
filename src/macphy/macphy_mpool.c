@@ -25,6 +25,7 @@
 //////////////////////////////////////////////
 // BASIC ETHERNET Tx & Rx Buffers
 static MacSpiMemType SpiMemPool[MEM_POOL_SIZE];
+static int active_pool_idx = -1;
 
 
 // Memory Pool Functions
@@ -59,4 +60,18 @@ void free_mem_pool(int idx) {
         }
 
         SpiMemPool[idx].in_use = FALSE;
+}
+
+
+
+int get_active_pool_idx(void) {
+        return active_pool_idx;
+}
+
+void set_active_pool_idx(int idx) {
+        active_pool_idx = idx;
+}
+
+void clr_active_pool_idx() {
+        active_pool_idx = -1;
 }
