@@ -533,6 +533,7 @@ void macphy_periodic_fn(void) {
                 }
         }
 
+        /* this function should be called only if there is no mem pool is in_use state */
         m_pool_scan_complete();
 }
 
