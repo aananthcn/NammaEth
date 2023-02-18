@@ -74,7 +74,8 @@ void set_active_pool_idx(int idx) {
         active_pool_idx = idx;
 }
 
-void clr_active_pool_idx() {
+void clr_active_pool_idx(void) {
+        free_mem_pool(active_pool_idx);
         active_pool_idx = -1;
 }
 

@@ -366,7 +366,10 @@ boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem) {
 
 
 void send_pkt_from_mpool(int pidx, uint8 *pktptr, uint16 pktlen) {
-        /* copy the packet to MAC's Tx memory */
+        /* the current pool index will be used for transmission */
+        set_active_pool_idx(pidx);
+
+        /* copy the packet to MAC's Tx memory via SPI buffer pool */
         enc28j60_write_mem(pktptr, pktlen, get_pool_mem(pidx));
         /* trigger the MAC to send the copied pkg */
         enc28j60_bitset_reg(ECON1, ECON1_TXRTS);
@@ -377,8 +380,8 @@ void send_pkt_from_mpool(int pidx, uint8 *pktptr, uint16 pktlen) {
                 enc28j60_bitclr_reg(ECON1, ECON1_TXRTS);
         }
 
-        /* tx will take time, hence free the memory pool in next round */
-        set_active_pool_idx(pidx);
+        /* by this time the packet should have gone into the macphy's memory */
+        clr_active_pool_idx();
 }
 
 
@@ -408,26 +411,17 @@ boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
                 enc28j60_bitclr_reg(ECON1, ECON1_TXRTS);
         }
 
-        /* check if the previous tx request is completed */
-        tx_pidx = get_active_pool_idx();
-        if (tx_pidx > -1) {
-                /* trasnmission was initiated last time */
-                regbits = enc28j60_read_reg(ECON1);
-
-                /* check if the MACPHY is stil busy */
-                if (regbits & ECON1_TXRTS) {
-                        /* copy the packet to memory pool buffer */
-                        memcpy(get_pool_mem(pidx)->tx_buf, pktptr, pktlen);
-                        get_pool_mem(pidx)->tx_len = pktlen;
-                        return TRUE;
-                }
-                else {
-                        free_mem_pool(tx_pidx);
-                        clr_active_pool_idx();
-                }
+        /* check if the MACPHY is busy */
+        regbits = enc28j60_read_reg(ECON1);
+        if (regbits & ECON1_TXRTS) {
+                /* BUSY - so copy the packet to memory pool buffer */
+                memcpy(get_pool_mem(pidx)->tx_buf, pktptr, pktlen);
+                get_pool_mem(pidx)->tx_len = pktlen;
         }
-
-        send_pkt_from_mpool(pidx, pktptr, pktlen);
+        else {
+                /* NOT BUSY - send data to MACPHY via mem-pool */
+                send_pkt_from_mpool(pidx, pktptr, pktlen);
+        }
 
         return TRUE;
 }
