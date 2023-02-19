@@ -21,6 +21,7 @@
 #include <Eth.h>
 
 #include <macphy.h>
+#include <os_api.h> // for pr_log()
 
 
 void Eth_Init(const Eth_ConfigType* CfgPtr) {
@@ -32,6 +33,8 @@ void Eth_Init(const Eth_ConfigType* CfgPtr) {
 			macphy_init(CfgPtr[i].ctrlcfg.mac_addres);
 		}
 	}
+
+	pr_log("Eth init complete!\n");
 }
 
 

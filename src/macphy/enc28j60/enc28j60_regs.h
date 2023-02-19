@@ -251,7 +251,7 @@
 #define PHSTAT1_JBSTAT  (0x0002)
 
 // ENC28J60 PHY PHCON2 Register Bit Definitions
-#define PHCON2_FRCLINK  (0x4000)
+#define PHCON2_FRCLNK   (0x4000)
 #define PHCON2_TXDIS    (0x2000)
 #define PHCON2_JABBER   (0x0400)
 #define PHCON2_HDLDIS   (0x0100)

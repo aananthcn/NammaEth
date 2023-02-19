@@ -365,6 +365,31 @@ boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem) {
 
 
 
+void dump_enc28j60_status_registers(void) {
+	uint16 phy_reg;
+	uint8 reg_data;
+
+	// Status register read
+	reg_data = enc28j60_read_reg(ESTAT);
+	pr_log("\tESTAT: 0x%02x\n", reg_data);
+	reg_data = enc28j60_read_reg(EIR);
+	pr_log("\tEIR: 0x%02x\n", reg_data);
+
+	// other register tests
+	reg_data = enc28j60_read_reg(ERDPTL);
+	pr_log("\tERDPTL: 0x%02x\n", reg_data);
+	reg_data = enc28j60_read_reg(ERDPTH);
+	pr_log("\tERDPTH: 0x%02x\n", reg_data);
+	reg_data = enc28j60_read_reg(ECOCON);
+	pr_log("\tECOCON: 0x%02x\n", reg_data);
+
+	// phy register tests
+	phy_reg = enc28j60_read_phy(PHSTAT1);
+	pr_log("\tPHSTAT1: 0x%04x\n", phy_reg);
+}
+
+
+#define DUMP_ENC28J60_STATUS_REGISTER 1
 void send_pkt_from_mpool(int pidx, uint8 *pktptr, uint16 pktlen) {
         /* the current pool index will be used for transmission */
         set_active_pool_idx(pidx);
@@ -382,6 +407,10 @@ void send_pkt_from_mpool(int pidx, uint8 *pktptr, uint16 pktlen) {
 
         /* by this time the packet should have gone into the macphy's memory */
         clr_active_pool_idx();
+
+#ifdef DUMP_ENC28J60_STATUS_REGISTER
+        dump_enc28j60_status_registers();
+#endif
 }
 
 
@@ -613,10 +642,12 @@ boolean macphy_init(const uint8 *mac_addr) {
 #endif
         // LED-A (green): Tx activity, LED-B: Rx activity, LED Pulse Stretched = 139 ms
         enc28j60_write_phy(PHLCON, 0x012A);
+        enc28j60_write_phy(PHCON2, PHCON2_FRCLNK); // force linkup even no link partner
 
         /* Enable packet receiption */
         enc28j60_bitset_reg(EIE, EIE_INTIE | EIE_PKTIE);
         enc28j60_bitset_reg(ECON1, ECON1_RXEN | ECON1_CSUMEN);
 
+        pr_log("ENC28J60 init complete!\n");
         return TRUE;
 }
