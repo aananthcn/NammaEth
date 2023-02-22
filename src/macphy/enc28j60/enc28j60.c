@@ -304,11 +304,9 @@ boolean enc28j60_read_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem) {
         /* For the up-comming transaction Tx line will be in high impedence state
         hence we are not clearing the Tx buffer. Also Rx buffer will be filled by
         the Spi, so it is not cleared either */
-        // Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, dlen+1);
         Spi_SetupEB(0, spi_mem->tx_buf, spi_mem->rx_buf, dlen+1);
 
         /* Do the SPI reception */
-        // SpiEthBasicTx[0] = (uint8) (RD_MEM_OPCODE);
         spi_mem->tx_buf[0] = (uint8) (RD_MEM_OPCODE);
         if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
                 pr_log("%s: Spi Sync Rx failure!\n", __func__);
@@ -317,7 +315,6 @@ boolean enc28j60_read_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem) {
 
         /* copy data bytes to client buffer */
         for (i = 0; i < dlen; i++) {
-                // dptr[i] = SpiEthBasicRx[i+1];
                 dptr[i] = spi_mem->rx_buf[i+1];
         }
 
