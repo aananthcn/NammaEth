@@ -35,9 +35,6 @@ INCDIRS  += -I ${ETH_PATH}/src \
 	    -I ${ETH_PATH}/src/macphy \
 	    -I ${ETH_PATH}/src/bsp \
 	    -I ${MCU_PATH}/src \
-	    -I ${MCU_PATH}/src/common \
-	    -I ${MCU_PATH}/src/common/api \
-	    -I ${MCU_PATH}/src/common/src \
 	    -I ${SPI_PATH}/api \
 	    -I ${SPI_PATH}/cfg \
 	    -I ${CAR_OS_INC_PATH}/autosar \
@@ -55,20 +52,27 @@ ETH_OBJS := \
 	${ETH_PATH}/cfg/Eth_cfg.o
 
 
-LDFLAGS := -g -relocatable
-CFLAGS  := -Werror ${INCDIRS} -g
-ASFLAGS := ${INCDIRS} -g
-TARGET 	:= libEth.la
+# LDFLAGS := -g -relocatable
+# CFLAGS  := -Werror ${INCDIRS} -g
+# ASFLAGS := ${INCDIRS} -g
+TARGET 	:= libEth.a
 # include c_l_flags.mk to add more definitions specific to micro-controller
 include ${CAR_OS_PATH}/c_l_flags.mk
 include ${ETH_PATH}/src/macphy/macphy.mk
+
+
+%.o: %.c
+	$(CC) -c ${CFLAGS} ${INCDIRS} $< -o $@
+
 
 all: $(TARGET)
 
 LIB_OBJS := $(ETH_OBJS)
 
 $(TARGET): $(LIB_OBJS)
-	$(LD) ${LDFLAGS} -o $@ $^
+	$(AR) -rcs ${TARGET} ${LIB_OBJS}
+
+#	$(LD) ${LDFLAGS} -o $@ $^
 
 clean:
 	$(RM) $(LIB_OBJS) $(TARGET)
