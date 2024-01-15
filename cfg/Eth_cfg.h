@@ -128,7 +128,7 @@ typedef struct {
 } Eth_ConfigType;
 
 
-#define ETH_DRIVER_MAX_CHANNEL    (0)
+#define ETH_DRIVER_MAX_CHANNEL    (1)
 
 
 extern const Eth_ConfigType EthConfigs[ETH_DRIVER_MAX_CHANNEL];

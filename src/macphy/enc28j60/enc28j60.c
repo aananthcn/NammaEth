@@ -28,6 +28,9 @@
 #include "enc28j60.h"
 #include <macphy_mpool.h>
 
+#include <zephyr/logging/log.h>
+LOG_MODULE_REGISTER(enc28j60, LOG_LEVEL_DBG);
+
 
 // Memory Buffer Layout (8k)
 #define BUFFER_BEG	(0x0000)
@@ -85,7 +88,7 @@ static inline boolean enc28j60_switch_bank(uint16 reg) {
         SpiEthBasicTx[0] = (uint8) ((RD_REG_OPCODE) | (ECON1));
         SpiEthBasicTx[1] = 0; // dummy
         if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
-                pr_log("%s: Spi Sync Tx failure[1]!\n", __func__);
+                LOG_ERR("%s: Spi Sync Tx failure[1]!", __func__);
                 return FALSE;
         }
         data = SpiEthBasicRx[1] & 0xFC; // remove last 2 bits & read
@@ -96,7 +99,7 @@ static inline boolean enc28j60_switch_bank(uint16 reg) {
         bank = ((reg & 0x3F00) >> 8);
         SpiEthBasicTx[1] = data | (bank & 0x03);
         if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
-                pr_log("%s: Spi Sync Tx failure[2]!\n", __func__);
+                LOG_ERR("%s: Spi Sync Tx failure[2]!", __func__);
                 return FALSE;
         }
 
@@ -125,7 +128,7 @@ uint8 enc28j60_read_reg(uint16 reg) {
         SpiEthBasicTx[0] = (uint8) ((RD_REG_OPCODE) | (reg & 0xff));
         SpiEthBasicTx[dlen-1] = 0x00; // dummy 2nd byte for MII or MAC registers
         if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
-                pr_log("%s: Spi Sync Tx failure!\n", __func__);
+                LOG_ERR("%s: Spi Sync Tx failure!", __func__);
                 return 0xFF;
         }
 
@@ -148,7 +151,7 @@ boolean enc28j60_write_reg(uint16 reg, uint8 data) {
         SpiEthBasicTx[0] = (uint8) ((WR_REG_OPCODE) | (reg & 0xff));
         SpiEthBasicTx[dlen-1] = data;
         if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
-                pr_log("%s: Spi Sync Tx failure!\n", __func__);
+                LOG_ERR("%s: Spi Sync Tx failure!", __func__);
                 return FALSE;
         }
 
@@ -161,7 +164,7 @@ boolean enc28j60_sys_cmd(uint8 cmd) {
         Spi_SetupEB(0, SpiEthBasicTx, SpiEthBasicRx, 1);
         SpiEthBasicTx[0] = (uint8) (cmd);
         if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
-                pr_log("%s: Spi Sync Tx failure!\n", __func__);
+                LOG_ERR("%s: Spi Sync Tx failure!", __func__);
                 return FALSE;
         }
 
@@ -190,7 +193,7 @@ static inline boolean enc28j60_bit_ops_reg(uint8 opcode, uint16 reg, uint8 data)
         SpiEthBasicTx[0] = (uint8) ((opcode) | (reg & 0xff));
         SpiEthBasicTx[dlen-1] = data;
         if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
-                pr_log("%s: Spi Sync Tx failure!\n", __func__);
+                LOG_ERR("%s: Spi Sync Tx failure!", __func__);
                 return FALSE;
         }
 
@@ -240,7 +243,7 @@ uint16 enc28j60_read_phy(uint8 phyaddr) {
 
         // return if PHY is not free even after few retries
         if (enc28j60_check_phy_busy()) {
-                pr_log("%s(): wait period exceeded [1]\n");
+                LOG_ERR("%s(): wait period exceeded [1]");
                 return phyreg;
         }
 
@@ -256,7 +259,7 @@ uint16 enc28j60_read_phy(uint8 phyaddr) {
         // clear the MICMD.MIIRD bit
         enc28j60_write_reg(MICMD, 0x00);
         if (phybusy) {
-                pr_log("%s(): wait period exceeded [2]\n");
+                LOG_ERR("%s(): wait period exceeded [2]");
                 return phyreg;
         }
 
@@ -280,7 +283,7 @@ boolean enc28j60_write_phy(uint8 phyaddr, uint16 data) {
 
         // wait 10.24us and poll MSTAT.BUSY bit
         if (enc28j60_check_phy_busy()) {
-                pr_log("%s(): wait period exceeded\n");
+                LOG_ERR("%s(): wait period exceeded", __func__);
                 return FALSE;
         }
 
@@ -296,7 +299,7 @@ boolean enc28j60_read_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem) {
 
         /* check if data+1-byte_read opcode can fit into Rx Buffer */
         if (dlen+1 > MAX_ETH_FRAME_LEN) {
-                pr_log("ERROR: %s(): dlen = %d greater than max = %d bytes\n",
+                LOG_ERR("ERROR: %s(): dlen = %d greater than max = %d bytes",
                         __func__, dlen, MAX_ETH_FRAME_LEN);
                         return FALSE;
         }
@@ -309,7 +312,7 @@ boolean enc28j60_read_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem) {
         /* Do the SPI reception */
         spi_mem->tx_buf[0] = (uint8) (RD_MEM_OPCODE);
         if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
-                pr_log("%s: Spi Sync Rx failure!\n", __func__);
+                LOG_ERR("%s: Spi Sync Rx failure!", __func__);
                 return FALSE;
         }
 
@@ -328,7 +331,7 @@ boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem) {
 
         /* check if data+2-byte_read opcode, per-pkt ctrl-byte can fit into Tx Buffer */
         if (dlen+2 > MAX_ETH_FRAME_LEN) {
-                pr_log("%s(): dlen = %d greater than max = %d bytes\n",
+                LOG_ERR("%s(): dlen = %d greater than max = %d bytes",
                         __func__, dlen, MAX_ETH_FRAME_LEN);
                         return FALSE;
         }
@@ -353,7 +356,7 @@ boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem) {
 
         /* Do the SPI transfer */
         if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
-                pr_log("%s: Spi Sync Tx failure!\n", __func__);
+                LOG_ERR("%s: Spi Sync Tx failure!", __func__);
                 return FALSE;
         }
 
@@ -368,21 +371,21 @@ void dump_enc28j60_status_registers(void) {
 
 	// Status register read
 	reg_data = enc28j60_read_reg(ESTAT);
-	pr_log("\tESTAT: 0x%02x\n", reg_data);
+	LOG_DBG("\tESTAT: 0x%02x", reg_data);
 	reg_data = enc28j60_read_reg(EIR);
-	pr_log("\tEIR: 0x%02x\n", reg_data);
+	LOG_DBG("\tEIR: 0x%02x", reg_data);
 
 	// other register tests
 	reg_data = enc28j60_read_reg(ERDPTL);
-	pr_log("\tERDPTL: 0x%02x\n", reg_data);
+	LOG_DBG("\tERDPTL: 0x%02x", reg_data);
 	reg_data = enc28j60_read_reg(ERDPTH);
-	pr_log("\tERDPTH: 0x%02x\n", reg_data);
+	LOG_DBG("\tERDPTH: 0x%02x", reg_data);
 	reg_data = enc28j60_read_reg(ECOCON);
-	pr_log("\tECOCON: 0x%02x\n", reg_data);
+	LOG_DBG("\tECOCON: 0x%02x", reg_data);
 
 	// phy register tests
 	phy_reg = enc28j60_read_phy(PHSTAT1);
-	pr_log("\tPHSTAT1: 0x%04x\n", phy_reg);
+	LOG_DBG("\tPHSTAT1: 0x%04x", phy_reg);
 }
 
 
@@ -426,7 +429,7 @@ boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
         /* get memory pool for ethernet frame transfer */
         pidx = get_m_pool_index();
         if (pidx < 0) {
-                pr_log("ERROR: %s() couldn't get a mem pool\n", __func__);
+                LOG_ERR("ERROR: %s() couldn't get a mem pool", __func__);
                 return FALSE;
         }
 
@@ -471,7 +474,7 @@ uint16 macphy_pkt_recv(uint8 *pktptr, uint16 maxlen) {
         /* get memory pool for ethernet frame transfer */
         pidx = get_m_pool_index();
         if (pidx < 0) {
-                pr_log("ERROR: %s() couldn't get a mem pool\n", __func__);
+                LOG_ERR("ERROR: %s() couldn't get a mem pool", __func__);
                 return FALSE;
         }
 
@@ -518,9 +521,8 @@ uint16 macphy_pkt_recv(uint8 *pktptr, uint16 maxlen) {
         /* free the memory pool */
         free_mem_pool(pidx);
 
-#if defined(DEBUG_ENC28J60)
-        pr_log("rx_status = 0x%04x, next_pkt_ptr = 0x%04x\n", rx_status, nxtpktptr);
-#endif
+        LOG_DBG("rx_status = 0x%04x, next_pkt_ptr = 0x%04x", rx_status, nxtpktptr);
+
         return pktlen;
 }
 
@@ -563,26 +565,26 @@ boolean macphy_init(const uint8 *mac_addr) {
         uint16 reg_bits;
 
         if (mac_addr == NULL) {
-                pr_log("%s: invalid MAC address!\n", __func__);
+                LOG_ERR("%s: invalid MAC address!", __func__);
                 return FALSE;
         }
 
         /* reset the chip first, set bank to 0 */
         enc28j60_sys_cmd(SC_RST_OPCODE);
         enc28j60_bitclr_reg(ECON1, 0x03);
-        pr_log("This build uses MACPHY: ENC28J60\n");
+        LOG_DBG("This build uses MACPHY: ENC28J60");
 
         /* read the chip revision IDs */
         MAC_RevId = enc28j60_read_reg(EREVID);
-        pr_log("MAC RevID: 0x%02x\n", MAC_RevId);
+        LOG_DBG("MAC RevID: 0x%02x", MAC_RevId);
 
         reg_bits = enc28j60_read_phy(PHID1);
         PHY_Id = reg_bits << 3; // bits[18:3]
         reg_bits = enc28j60_read_phy(PHID2);
         PHY_Id |= (reg_bits & 0xFC00) << (19-2); //bits[24:19]
         PHY_Rev = (uint8) reg_bits & 0x0F;
-        pr_log("PHY ID: 0x%x\n", PHY_Id);
-        pr_log("PHY RevID: 0x%02x\n", PHY_Rev);
+        LOG_DBG("PHY ID: 0x%x", PHY_Id);
+        LOG_DBG("PHY RevID: 0x%02x", PHY_Rev);
 
         /* set buffer memory layout - Rx */
         enc28j60_write_reg(ERXSTL, LO_BYTE(RX_BUF_BEG));
@@ -645,6 +647,7 @@ boolean macphy_init(const uint8 *mac_addr) {
         enc28j60_bitset_reg(EIE, EIE_INTIE | EIE_PKTIE);
         enc28j60_bitset_reg(ECON1, ECON1_RXEN | ECON1_CSUMEN);
 
-        pr_log("ENC28J60 init complete!\n");
+        LOG_DBG("ENC28J60 init complete!");
+
         return TRUE;
 }

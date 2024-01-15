@@ -21,7 +21,10 @@
 #include <Eth.h>
 
 #include <macphy.h>
-#include <os_api.h> // for pr_log()
+
+
+#include <zephyr/logging/log.h>
+LOG_MODULE_REGISTER(Eth, LOG_LEVEL_DBG);
 
 
 void Eth_Init(const Eth_ConfigType* CfgPtr) {
@@ -34,7 +37,7 @@ void Eth_Init(const Eth_ConfigType* CfgPtr) {
 		}
 	}
 
-	pr_log("Eth init complete!\n");
+	LOG_DBG("Init complete!");
 }
 
 
