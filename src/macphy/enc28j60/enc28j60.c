@@ -75,10 +75,17 @@ boolean enc28j60_read_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem);
 static inline boolean enc28j60_switch_bank(uint16 reg) {
         uint8 data;
         uint8 bank;
+        static uint8 bank_old;
 
         // First, return if the target reg is a common register
         if (0x4000 & reg) {
                 return TRUE; // bank switch is not required for common register
+        }
+
+        // check if it is required to switch the bank
+        bank = ((reg & 0x3F00) >> 8);
+        if (bank == bank_old) {
+                return TRUE; // already switched
         }
 
         /* For the up-comming transmission, we just need to send 1+1 byte */
@@ -96,12 +103,14 @@ static inline boolean enc28j60_switch_bank(uint16 reg) {
 
         /* Write ECON1 register with target bank bits */
         SpiEthBasicTx[0] = (uint8) ((WR_REG_OPCODE) | (ECON1));
-        bank = ((reg & 0x3F00) >> 8);
         SpiEthBasicTx[1] = data | (bank & 0x03);
         if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
                 LOG_ERR("%s: Spi Sync Tx failure[2]!", __func__);
                 return FALSE;
         }
+
+        /* Store old bank value to prevent bank switching if it is already switched */
+        bank_old = bank;
 
         return TRUE;
 }
@@ -217,18 +226,10 @@ boolean enc28j60_bitclr_reg(uint16 reg, uint8 data) {
 boolean enc28j60_check_phy_busy(void) {
         boolean phy_busy = FALSE; // lets assume that PHY is idle
         uint8 mstat;
-        uint8 cnt = 10; // let us not loop for ever
 
-        while(1) {
-                mstat = enc28j60_read_reg(MISTAT);
-                if (!(mstat & MISTAT_BUSY)) {
-                        break;
-                }
-                cnt--;
-                if (cnt == 0) {
-                        phy_busy = TRUE;
-                        break;
-                }
+        mstat = enc28j60_read_reg(MISTAT);
+        if (mstat & MISTAT_BUSY) {
+                phy_busy = TRUE;
         }
 
         return phy_busy;
@@ -237,14 +238,12 @@ boolean enc28j60_check_phy_busy(void) {
 
 
 uint16 enc28j60_read_phy(uint8 phyaddr) {
-        uint16 phyreg = 0xffff;
-        boolean phybusy;
         uint8 hig, low;
 
         // return if PHY is not free even after few retries
         if (enc28j60_check_phy_busy()) {
-                LOG_ERR("%s(): wait period exceeded [1]");
-                return phyreg;
+                LOG_ERR("%s(): Eth. PHY is busy - 1");
+                return 0xffff;
         }
 
         // write the address of the PHY register to read
@@ -254,21 +253,24 @@ uint16 enc28j60_read_phy(uint8 phyaddr) {
         enc28j60_write_reg(MICMD, MICMD_MIIRD);
 
         // wait 10.24us and poll MSTAT.BUSY bit
-        phybusy = enc28j60_check_phy_busy();
+        k_sleep(K_USEC(11));
+        if (enc28j60_check_phy_busy()) {
+                LOG_ERR("%s(): Eth. PHY is busy - 2");
+                return 0xffff;
+        }
 
         // clear the MICMD.MIIRD bit
         enc28j60_write_reg(MICMD, 0x00);
-        if (phybusy) {
-                LOG_ERR("%s(): wait period exceeded [2]");
-                return phyreg;
-        }
 
         // read desired data from MIRDL and MIRDH (order is important)
         low = enc28j60_read_reg(MIRDL);
         hig = enc28j60_read_reg(MIRDH);
-        phyreg = (hig << 8 | low);
 
-        return phyreg;
+        // following code-lines causes timing issues in reading PHY data correctly!
+	//LOG_DBG("MIRDL: 0x%04x", low);
+	//LOG_DBG("MIRDH: 0x%04x", hig);
+
+        return (hig << 8 | low);
 }
 
 
@@ -475,7 +477,7 @@ uint16 macphy_pkt_recv(uint8 *pktptr, uint16 maxlen) {
         pidx = get_m_pool_index();
         if (pidx < 0) {
                 LOG_ERR("ERROR: %s() couldn't get a mem pool", __func__);
-                return FALSE;
+                return 0;
         }
 
         /* set the read pointer to the start of the next packet */
