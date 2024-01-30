@@ -28,8 +28,9 @@ LOG_MODULE_REGISTER(Eth, LOG_LEVEL_DBG);
 
 
 void Eth_Init(const Eth_ConfigType* CfgPtr) {
-	// body of the function
-	int i;
+	uint16 i, o;
+	char mac[16];
+
 	for (i = 0; i < ETH_DRIVER_MAX_CHANNEL; i++) {
 		if (CfgPtr[i].ctrlcfg.enable_mii == TRUE) {
 			// call function to initialize the MACPHY via SPI
@@ -37,6 +38,12 @@ void Eth_Init(const Eth_ConfigType* CfgPtr) {
 		}
 	}
 
+	sprintf(mac, "%02X", CfgPtr[0].ctrlcfg.mac_addres[0]);
+	for (i = 1, o = 2; i < 6; i++, o += 3) {
+		sprintf(mac+o, ":%02X", CfgPtr[0].ctrlcfg.mac_addres[i]);
+	}
+	mac[o+3] = "\0";
+	LOG_INF("Eth0 MAC: %s", mac);
 	LOG_DBG("Init complete!");
 }
 
