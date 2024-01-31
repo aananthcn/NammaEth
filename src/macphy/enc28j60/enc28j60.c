@@ -31,6 +31,8 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(enc28j60, LOG_LEVEL_DBG);
 
+#define ADDL_ENC28J60_DEBUG_PRINTS      1
+
 
 // Memory Buffer Layout (8k)
 #define BUFFER_BEG	(0x0000)
@@ -391,7 +393,6 @@ void dump_enc28j60_status_registers(void) {
 }
 
 
-#define DUMP_ENC28J60_STATUS_REGISTER 1
 void send_pkt_from_mpool(int pidx, uint8 *pktptr, uint16 pktlen) {
         /* the current pool index will be used for transmission */
         set_active_pool_idx(pidx);
@@ -410,7 +411,7 @@ void send_pkt_from_mpool(int pidx, uint8 *pktptr, uint16 pktlen) {
         /* by this time the packet should have gone into the macphy's memory */
         clr_active_pool_idx();
 
-#ifdef DUMP_ENC28J60_STATUS_REGISTER
+#ifdef ADDL_ENC28J60_DEBUG_PRINTS
         dump_enc28j60_status_registers();
 #endif
 }
@@ -453,6 +454,21 @@ boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
                 /* NOT BUSY - send data to MACPHY via mem-pool */
                 send_pkt_from_mpool(pidx, pktptr, pktlen);
         }
+
+#if ADDL_ENC28J60_DEBUG_PRINTS
+        /* check for errors while sending */
+        if (enc28j60_read_reg(ESTAT) & ESTAT_TXABRT)
+        {
+                // a seven-byte transmit status vector will be
+                // written to the location pointed to by ETXND + 1,
+                LOG_ERR("ERR - transmit aborted");
+        }
+
+        if (enc28j60_read_reg(EIR) & EIR_TXERIF)
+        {
+                LOG_ERR("ERR - transmit interrupt flag set");
+        }
+#endif
 
         return TRUE;
 }
