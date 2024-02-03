@@ -48,11 +48,19 @@ LOG_MODULE_REGISTER(enc28j60, LOG_LEVEL_DBG);
 
 
 // Main Control & Status Registers
-// static uint8 Regs_Cmn[5] = {0x00, 0x00, 0x00, 0x80 /* AUTOINC = 0x1*/, 0x00};
-static MacPhyStateType ENC28J60_State;
 static uint32 PHY_Id;
 static uint8  PHY_Rev;
 static uint8  MAC_RevId;
+
+
+// State Management Bits
+typedef enum {
+        MACPHY_RESET = 0x00,
+        MACPHY_LINK_UP = 0x01,
+        MAX_MACPHY_STATE
+}MacPhyState_t;
+
+static MacPhyState_t MacPhy_state;
 
 
 // Frame configs
@@ -231,6 +239,17 @@ boolean enc28j60_check_phy_busy(void) {
 
         mstat = enc28j60_read_reg(MISTAT);
         if (mstat & MISTAT_BUSY) {
+                LOG_WRN("A PHY register is currently being read or written to!");
+                phy_busy = TRUE;
+        }
+
+        if (mstat & MISTAT_NVALID) {
+                LOG_WRN("The contents of MIRD are not valid yet!");
+                phy_busy = TRUE;
+        }
+
+        if (mstat & MISTAT_SCAN) {
+                LOG_WRN("MII management scan operation is in progress!");
                 phy_busy = TRUE;
         }
 
@@ -244,7 +263,7 @@ uint16 enc28j60_read_phy(uint8 phyaddr) {
 
         // return if PHY is not free even after few retries
         if (enc28j60_check_phy_busy()) {
-                LOG_ERR("%s(): Eth. PHY is busy - 1");
+                LOG_ERR("Eth. PHY is busy - 1");
                 return 0xffff;
         }
 
@@ -257,7 +276,7 @@ uint16 enc28j60_read_phy(uint8 phyaddr) {
         // wait 10.24us and poll MSTAT.BUSY bit
         k_sleep(K_USEC(11));
         if (enc28j60_check_phy_busy()) {
-                LOG_ERR("%s(): Eth. PHY is busy - 2");
+                LOG_ERR("Eth. PHY is busy - 2");
                 return 0xffff;
         }
 
@@ -267,10 +286,6 @@ uint16 enc28j60_read_phy(uint8 phyaddr) {
         // read desired data from MIRDL and MIRDH (order is important)
         low = enc28j60_read_reg(MIRDL);
         hig = enc28j60_read_reg(MIRDH);
-
-        // following code-lines causes timing issues in reading PHY data correctly!
-	//LOG_DBG("MIRDL: 0x%04x", low);
-	//LOG_DBG("MIRDH: 0x%04x", hig);
 
         return (hig << 8 | low);
 }
@@ -286,6 +301,7 @@ boolean enc28j60_write_phy(uint8 phyaddr, uint16 data) {
         enc28j60_write_reg(MIWRH, (uint8)(data >> 8));
 
         // wait 10.24us and poll MSTAT.BUSY bit
+        k_sleep(K_USEC(11));
         if (enc28j60_check_phy_busy()) {
                 LOG_ERR("%s(): wait period exceeded", __func__);
                 return FALSE;
@@ -369,8 +385,26 @@ boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem) {
 
 
 
-void dump_enc28j60_status_registers(void) {
+static MacPhyState_t read_enc28j60_phstat_regs(void) {
 	uint16 phy_reg;
+
+	phy_reg = enc28j60_read_phy(PHSTAT1);
+	LOG_DBG("\tPHSTAT1: 0x%04x", phy_reg);
+        if (phy_reg & 0x04) {
+                MacPhy_state |= MACPHY_LINK_UP;
+        }
+        else {
+                MacPhy_state &= ~MACPHY_LINK_UP;
+        }
+
+        // TODO: read PHSTAT2 register and update MacPhy_state bits
+
+        return MacPhy_state;
+}
+
+
+
+void dump_enc28j60_status_registers(void) {
 	uint8 reg_data;
 
 	// Status register read
@@ -387,9 +421,8 @@ void dump_enc28j60_status_registers(void) {
 	reg_data = enc28j60_read_reg(ECOCON);
 	LOG_DBG("\tECOCON: 0x%02x", reg_data);
 
-	// phy register tests
-	phy_reg = enc28j60_read_phy(PHSTAT1);
-	LOG_DBG("\tPHSTAT1: 0x%04x", phy_reg);
+	// phy register status read
+	read_enc28j60_phstat_regs();
 }
 
 
@@ -421,7 +454,7 @@ void send_pkt_from_mpool(int pidx, uint8 *pktptr, uint16 pktlen) {
 //////////////////////////////////////////////
 // Global Functions
 boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
-        int pidx, tx_pidx;
+        int pidx;
         uint8 regbits;
         boolean tx_abort;
 
@@ -443,12 +476,15 @@ boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
                 enc28j60_bitclr_reg(ECON1, ECON1_TXRTS);
         }
 
-        /* check if the MACPHY is busy */
+        /* check if the MACPHY is busy as well as see if link is up */
         regbits = enc28j60_read_reg(ECON1);
-        if (regbits & ECON1_TXRTS) {
-                /* BUSY - so copy the packet to memory pool buffer */
+        if ((regbits & ECON1_TXRTS) || ((MacPhy_state & MACPHY_LINK_UP) == 0)) {
+                /* Not ready - so copy the packet to memory pool buffer */
                 memcpy(get_pool_mem(pidx)->tx_buf, pktptr, pktlen);
                 get_pool_mem(pidx)->tx_len = pktlen;
+
+                /* In case link is down, please read it now for future use */
+                read_enc28j60_phstat_regs();
         }
         else {
                 /* NOT BUSY - send data to MACPHY via mem-pool */
@@ -589,20 +625,13 @@ boolean macphy_init(const uint8 *mac_addr) {
 
         /* reset the chip first, set bank to 0 */
         enc28j60_sys_cmd(SC_RST_OPCODE);
+
         enc28j60_bitclr_reg(ECON1, 0x03);
         LOG_DBG("This build uses MACPHY: ENC28J60");
 
         /* read the chip revision IDs */
         MAC_RevId = enc28j60_read_reg(EREVID);
         LOG_DBG("MAC RevID: 0x%02x", MAC_RevId);
-
-        reg_bits = enc28j60_read_phy(PHID1);
-        PHY_Id = reg_bits << 3; // bits[18:3]
-        reg_bits = enc28j60_read_phy(PHID2);
-        PHY_Id |= (reg_bits & 0xFC00) << (19-2); //bits[24:19]
-        PHY_Rev = (uint8) reg_bits & 0x0F;
-        LOG_DBG("PHY ID: 0x%x", PHY_Id);
-        LOG_DBG("PHY RevID: 0x%02x", PHY_Rev);
 
         /* set buffer memory layout - Rx */
         enc28j60_write_reg(ERXSTL, LO_BYTE(RX_BUF_BEG));
@@ -652,14 +681,26 @@ boolean macphy_init(const uint8 *mac_addr) {
         enc28j60_write_reg(MAADR0, mac_addr[5]);
 
         /* Configure PHY */
+        //----------------
+        /*   Note: all PHY registers should not be read or written to until
+             at least 50 μs have passed since the Reset has ended. */
+        reg_bits = enc28j60_read_phy(PHID1);
+        PHY_Id = reg_bits << 3; // bits[18:3]
+        reg_bits = enc28j60_read_phy(PHID2);
+        // phy_id = ((phid2 & 0xFC00) >> 10) << 19 /*bits[15:10] --> bits[24:19]*/ |  phid1 << 3 /*bits[18:3]*/;
+        PHY_Id |= (reg_bits & 0xFC00) << (19-10); //bits[24:19]
+        PHY_Rev = (uint8) reg_bits & 0x0F;
+        LOG_DBG("PHY ID: 0x%x", PHY_Id);
+        LOG_DBG("PHY RevID: 0x%02x", PHY_Rev);
+
 #if defined(MACPHY_HALF_DUPLEX)
         enc28j60_write_phy(PHCON1, 0x0000);
 #else
         enc28j60_write_phy(PHCON1, PHCON1_PDPXMD); // PHY in full-duplex
 #endif
-        // LED-A (green): Tx activity, LED-B: Rx activity, LED Pulse Stretched = 139 ms
-        enc28j60_write_phy(PHLCON, 0x012A);
-        enc28j60_write_phy(PHCON2, PHCON2_FRCLNK); // force linkup even no link partner
+        // LED-A (green): Link status; LED-B: Tx/Rx activity, LED Pulse Stretched = 139 ms
+        enc28j60_write_phy(PHLCON, 0x047A);
+        enc28j60_write_phy(PHCON2, 0); // normal operation. To debug set PHCON2_FRCLNK and check
 
         /* Enable packet receiption */
         enc28j60_bitset_reg(EIE, EIE_INTIE | EIE_PKTIE);
