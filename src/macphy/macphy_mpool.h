@@ -25,27 +25,30 @@
 #include <Std_Types.h>
 #include <stddef.h>
 
+
 #define MEM_POOL_BUF_LEN        (1522)
-#define MEM_POOL_SIZE           (2)
+#define MEM_POOL_SIZE           (3)
+
+
+typedef enum {
+        MPOOL_FREE,
+        MPOOL_ACQUIRED,
+        MPOOL_DATA_FILLED,
+        MAX_MPOOL_STATE
+} spi_mpool_state_t;
 
 
 typedef struct {
         uint8 tx_buf[MEM_POOL_BUF_LEN];
         uint8 rx_buf[MEM_POOL_BUF_LEN];
-        uint16 tx_len;
-        boolean in_use;
-} MacSpiMemType;
+        uint16 dlen;
+        spi_mpool_state_t state;
+} spi_mpool_t;
 
 
-int get_m_pool_index(void);
-MacSpiMemType* get_pool_mem(int idx);
-void free_mem_pool(int idx);
+spi_mpool_t* get_free_mpool(void);
+spi_mpool_t* get_data_mpool(void);
+boolean free_mpool(spi_mpool_t* p_mpool);
 
-int get_active_pool_idx(void);
-void set_active_pool_idx(int idx);
-void clr_active_pool_idx();
-boolean if_m_pool_has_data(void);
-void m_pool_scan_complete(void);
-boolean if_m_pool_mem_in_use(int idx);
 
 #endif

@@ -72,8 +72,8 @@ uint8 SpiEthBasicRx[ENC28J60_BASIC_MSG_LEN];
 
 
 // Local function prototypes
-boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem);
-boolean enc28j60_read_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem);
+boolean enc28j60_write_mem(spi_mpool_t *mpool);
+boolean enc28j60_read_mem(spi_mpool_t *mpool);
 
 
 
@@ -314,8 +314,9 @@ boolean enc28j60_write_phy(uint8 phyaddr, uint16 data) {
 
 //////////////////////////////////////////////
 // Basic ENC28J60 Primitive - Memory R/W
-boolean enc28j60_read_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem) {
-        int i;
+boolean enc28j60_read_mem(spi_mpool_t *mpool) {
+        uint16 dlen = mpool->dlen;
+        uint16 i;
 
         /* check if data+1-byte_read opcode can fit into Rx Buffer */
         if (dlen+1 > MAX_ETH_FRAME_LEN) {
@@ -327,33 +328,35 @@ boolean enc28j60_read_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem) {
         /* For the up-comming transaction Tx line will be in high impedence state
         hence we are not clearing the Tx buffer. Also Rx buffer will be filled by
         the Spi, so it is not cleared either */
-        Spi_SetupEB(0, spi_mem->tx_buf, spi_mem->rx_buf, dlen+1);
+        Spi_SetupEB(0, mpool->tx_buf, mpool->rx_buf, dlen+1);
 
         /* Do the SPI reception */
-        spi_mem->tx_buf[0] = (uint8) (RD_MEM_OPCODE);
+        mpool->tx_buf[0] = (uint8) (RD_MEM_OPCODE);
         if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
                 LOG_ERR("%s: Spi Sync Rx failure!", __func__);
                 return FALSE;
         }
 
-        /* copy data bytes to client buffer */
-        for (i = 0; i < dlen; i++) {
-                dptr[i] = spi_mem->rx_buf[i+1];
-        }
 
         return TRUE;
 }
 
 
 
-boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem) {
-        int i;
+boolean enc28j60_write_mem(spi_mpool_t *mpool) {
+        uint16 dlen;
+
+        /* validate mpool */
+        if (mpool == NULL) {
+                LOG_ERR("mpool = NULL!");
+                return FALSE;
+        }
+        dlen = mpool->dlen;
 
         /* check if data+2-byte_read opcode, per-pkt ctrl-byte can fit into Tx Buffer */
         if (dlen+2 > MAX_ETH_FRAME_LEN) {
-                LOG_ERR("%s(): dlen = %d greater than max = %d bytes",
-                        __func__, dlen, MAX_ETH_FRAME_LEN);
-                        return FALSE;
+                LOG_ERR("dlen = %d greater than max = %d bytes", dlen, MAX_ETH_FRAME_LEN);
+                return FALSE;
         }
 
         /* always move the Tx write pointer to start of the Tx memory */
@@ -365,14 +368,8 @@ boolean enc28j60_write_mem(uint8 *dptr, uint16 dlen, MacSpiMemType *spi_mem) {
         enc28j60_write_reg(EWRPTH, HI_BYTE(TX_BUF_BEG));
 
         /* For the up-comming transmission, we just need to send/recv 1+1 byte */
-        Spi_SetupEB(0, spi_mem->tx_buf, spi_mem->rx_buf, dlen+2);
+        Spi_SetupEB(0, mpool->tx_buf, mpool->rx_buf, dlen+2);
 
-        /* Setup Tx Buffer for Transmission */
-        spi_mem->tx_buf[0] = (uint8)(WR_MEM_OPCODE);
-        spi_mem->tx_buf[1] = (uint8)(0x00); // per-packet control byte, refer section 7.1 of ENC28J60 manual
-        for (i = 0; i < dlen; i++) {
-                spi_mem->tx_buf[i+2] = dptr[i];
-        }
 
         /* Do the SPI transfer */
         if (E_NOT_OK == Spi_SyncTransmit(SEQ_ETHERNET_BASIC_TX_RX)) {
@@ -391,7 +388,10 @@ static MacPhyState_t read_enc28j60_phstat_regs(void) {
 	phy_reg = enc28j60_read_phy(PHSTAT1);
 	LOG_DBG("\tPHSTAT1: 0x%04x", phy_reg);
         if (phy_reg & 0x04) {
-                MacPhy_state |= MACPHY_LINK_UP;
+                if (!(MacPhy_state & MACPHY_LINK_UP)) {
+                        MacPhy_state |= MACPHY_LINK_UP;
+                        LOG_INF("Ethernet Link Up!");
+                }
         }
         else {
                 MacPhy_state &= ~MACPHY_LINK_UP;
@@ -426,12 +426,9 @@ void dump_enc28j60_status_registers(void) {
 }
 
 
-void send_pkt_from_mpool(int pidx, uint8 *pktptr, uint16 pktlen) {
-        /* the current pool index will be used for transmission */
-        set_active_pool_idx(pidx);
-
-        /* copy the packet to MAC's Tx memory via SPI buffer pool */
-        enc28j60_write_mem(pktptr, pktlen, get_pool_mem(pidx));
+void send_pkt_from_mpool(spi_mpool_t *mpool) {
+        /* send the pkt via SPI buffer pool */
+        enc28j60_write_mem(mpool);
         /* trigger the MAC to send the copied pkg */
         enc28j60_bitset_reg(ECON1, ECON1_TXRTS);
 
@@ -442,7 +439,9 @@ void send_pkt_from_mpool(int pidx, uint8 *pktptr, uint16 pktlen) {
         }
 
         /* by this time the packet should have gone into the macphy's memory */
-        clr_active_pool_idx();
+        if (FALSE == free_mpool(mpool)) {
+                LOG_ERR("%s(): Unable to free mpool", __func__);
+        }
 
 #ifdef ADDL_ENC28J60_DEBUG_PRINTS
         dump_enc28j60_status_registers();
@@ -454,7 +453,8 @@ void send_pkt_from_mpool(int pidx, uint8 *pktptr, uint16 pktlen) {
 //////////////////////////////////////////////
 // Global Functions
 boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
-        int pidx;
+        spi_mpool_t *mpool;
+        uint16 i;
         uint8 regbits;
         boolean tx_abort;
 
@@ -463,9 +463,9 @@ boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
         }
 
         /* get memory pool for ethernet frame transfer */
-        pidx = get_m_pool_index();
-        if (pidx < 0) {
-                LOG_ERR("ERROR: %s() couldn't get a mem pool", __func__);
+        mpool = get_free_mpool();
+        if (mpool == NULL) {
+                LOG_ERR("Can't send the pkt(len = %d), no free mpool!", pktlen);
                 return FALSE;
         }
 
@@ -476,19 +476,26 @@ boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
                 enc28j60_bitclr_reg(ECON1, ECON1_TXRTS);
         }
 
+        /* Setup / copy data to Tx Buffer to mpool */
+        mpool->tx_buf[0] = (uint8)(WR_MEM_OPCODE);
+        mpool->tx_buf[1] = (uint8)(0x00); // per-packet control byte, refer section 7.1 of ENC28J60 manual
+        for (i = 0; i < pktlen; i++) {
+                mpool->tx_buf[i+2] = pktptr[i];
+        }
+        mpool->dlen = pktlen;
+        mpool->state = MPOOL_DATA_FILLED;
+
         /* check if the MACPHY is busy as well as see if link is up */
         regbits = enc28j60_read_reg(ECON1);
         if ((regbits & ECON1_TXRTS) || ((MacPhy_state & MACPHY_LINK_UP) == 0)) {
-                /* Not ready - so copy the packet to memory pool buffer */
-                memcpy(get_pool_mem(pidx)->tx_buf, pktptr, pktlen);
-                get_pool_mem(pidx)->tx_len = pktlen;
-
-                /* In case link is down, please read it now for future use */
+                /* if the link is down, read it now for future use */
                 read_enc28j60_phstat_regs();
+
+                /* the pkt will be sent later from macphy_periodic_fn */
         }
         else {
                 /* NOT BUSY - send data to MACPHY via mem-pool */
-                send_pkt_from_mpool(pidx, pktptr, pktlen);
+                send_pkt_from_mpool(mpool);
         }
 
 #if ADDL_ENC28J60_DEBUG_PRINTS
@@ -513,22 +520,24 @@ boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
 
 #define RX_PKT_HDR_SZ (6) /* 2 byte next pkt pointer + rx status vector */
 uint16 macphy_pkt_recv(uint8 *pktptr, uint16 maxlen) {
-        int pidx;
+        spi_mpool_t *mpool;
+        uint8 *rx_pkt_hdr;
         uint16 pktlen;
         static uint16 nxtpktptr = RX_BUF_BEG;
         static uint16 rx_status;
-        uint8 rx_pkt_hdr[RX_PKT_HDR_SZ];
-        uint8 regbits;
+        uint8 pktcnt;
 
-        regbits = enc28j60_read_reg(EPKTCNT);
-        if (!regbits) {
+        /* check if any pkts are there in external MACPHY recev. buffer */
+        pktcnt = enc28j60_read_reg(EPKTCNT);
+        if (pktcnt == 0) {
                 return 0;
         }
 
-        /* get memory pool for ethernet frame transfer */
-        pidx = get_m_pool_index();
-        if (pidx < 0) {
-                LOG_ERR("ERROR: %s() couldn't get a mem pool", __func__);
+
+        /* get memory pool for ethernet frame reception */
+        mpool = get_free_mpool();
+        if (mpool == NULL) {
+                LOG_ERR("Can't recv eth pkt, no free mpool, increase MEM_POOL_SIZE!");
                 return 0;
         }
 
@@ -537,7 +546,9 @@ uint16 macphy_pkt_recv(uint8 *pktptr, uint16 maxlen) {
         enc28j60_write_reg(ERDPTH, HI_BYTE(nxtpktptr));
 
         /* read next pkt pointer and rx status vector */
-        enc28j60_read_mem(rx_pkt_hdr, RX_PKT_HDR_SZ, get_pool_mem(pidx));
+        rx_pkt_hdr = mpool->rx_buf+1; // +1 for WR_MEM_OPCODE
+        mpool->dlen = RX_PKT_HDR_SZ;
+        enc28j60_read_mem(mpool);
 
         /* as per figure 7-3 of datasheet (page - 45), read next pkt pointer */
         nxtpktptr = rx_pkt_hdr[0]; // low byte
@@ -546,7 +557,7 @@ uint16 macphy_pkt_recv(uint8 *pktptr, uint16 maxlen) {
         /* read length (incl. crc + padding) as per table 7-3 (page - 46) */
         pktlen = rx_pkt_hdr[2];
         pktlen |= rx_pkt_hdr[3] << 8;
-        pktlen -= 4; // crc len
+        pktlen -= 4; // CRC len, macphy will verify CRC
 
         /* limit the upcoming read size based on client memory size */
         if (pktlen > maxlen) {
@@ -557,25 +568,30 @@ uint16 macphy_pkt_recv(uint8 *pktptr, uint16 maxlen) {
         rx_status = rx_pkt_hdr[4];
         rx_status |= (rx_pkt_hdr[5] << 8);
 
-        /* copy the new message from ENCJ60 hardware to client buffer, if ok */
+        /* copy the new message from ENCJ60 hardware to mpool, if ok */
         if (rx_status & 0x80) {
-                enc28j60_read_mem(pktptr, pktlen, get_pool_mem(pidx));
+                mpool->dlen = pktlen;
+                enc28j60_read_mem(mpool);
+
+                /* TODO: revisit this data copy design (+1 for WR_MEM_OPCODE) */
+                memcpy(pktptr, mpool->rx_buf+1, pktlen);
         }
         else {
                 pktlen = 0; // Rx error present, hence ignore the packet
         }
 
+        /* free the memory pool */
+        if (FALSE == free_mpool(mpool)) {
+                LOG_ERR("%s(): Unable to free mpool", __func__);
+        }
+
         /* move Rx read pointer to nxtpktptr to free up buffer space in HW */
         enc28j60_write_reg(ERXRDPTL, LO_BYTE(nxtpktptr));
         enc28j60_write_reg(ERXRDPTH, HI_BYTE(nxtpktptr));
+        LOG_DBG("rx_status = 0x%04x, next_pkt_ptr = 0x%04x", rx_status, nxtpktptr);
 
         /* inform HW that we are done with the reading of current packet */
         enc28j60_bitset_reg(ECON2, ECON2_PKTDEC);
-
-        /* free the memory pool */
-        free_mem_pool(pidx);
-
-        LOG_DBG("rx_status = 0x%04x, next_pkt_ptr = 0x%04x", rx_status, nxtpktptr);
 
         return pktlen;
 }
@@ -583,34 +599,30 @@ uint16 macphy_pkt_recv(uint8 *pktptr, uint16 maxlen) {
 
 
 void macphy_periodic_fn(void) {
-        int i;
-        uint8 *pktptr;
-        uint16 pktlen;
+        spi_mpool_t *mpool;
+        uint8 regbits;
 
-        /* if data already queued into the mpool */
-        if (if_m_pool_has_data() == FALSE) {
+        /* check if the MACPHY is busy as well as see if link is up */
+        regbits = enc28j60_read_reg(ECON1);
+        if ((regbits & ECON1_TXRTS) || ((MacPhy_state & MACPHY_LINK_UP) == 0)) {
+                /* if the link is down, read it now for future use */
+                read_enc28j60_phstat_regs();
                 return;
         }
 
-        /* but, if enc28j60 is in transmission state */
-        if (get_active_pool_idx() != -1) {
-                return;
-        }
+        /* loop through the mem_pool for sending prefilled pkt */
+        do {
+                /* get filled memory pool for ethernet transmission */
+                mpool = get_data_mpool();
 
-        /* if code reaches here, then some data is in the pool & enc28j60 is idle */
-        for (i = 0; i < MEM_POOL_BUF_LEN; i++) {
-                if(if_m_pool_mem_in_use(i)) {
-                        pktptr = get_pool_mem(i)->tx_buf;
-                        pktlen = get_pool_mem(i)->tx_len;
-                        send_pkt_from_mpool(i, pktptr, pktlen);
-
-                        /* ENC28J60 can send one msg at a time, hence return */
-                        return;
+                if(mpool) {
+                        send_pkt_from_mpool(mpool);
+                        if (FALSE == free_mpool(mpool)) {
+                                LOG_ERR("%s(): Unable to free mpool", __func__);
+                        }
                 }
-        }
+        } while (mpool);
 
-        /* this function should be called only if there is no mem pool is in_use state */
-        m_pool_scan_complete();
 }
 
 
@@ -687,7 +699,6 @@ boolean macphy_init(const uint8 *mac_addr) {
         reg_bits = enc28j60_read_phy(PHID1);
         PHY_Id = reg_bits << 3; // bits[18:3]
         reg_bits = enc28j60_read_phy(PHID2);
-        // phy_id = ((phid2 & 0xFC00) >> 10) << 19 /*bits[15:10] --> bits[24:19]*/ |  phid1 << 3 /*bits[18:3]*/;
         PHY_Id |= (reg_bits & 0xFC00) << (19-10); //bits[24:19]
         PHY_Rev = (uint8) reg_bits & 0x0F;
         LOG_DBG("PHY ID: 0x%x", PHY_Id);

@@ -24,73 +24,53 @@
 
 //////////////////////////////////////////////
 // BASIC ETHERNET Tx & Rx Buffers
-static MacSpiMemType SpiMemPool[MEM_POOL_SIZE];
+static spi_mpool_t SpiMemPool[MEM_POOL_SIZE];
 static int active_pool_idx = -1;
-static boolean data_in_pool = FALSE;
 
 
 // Memory Pool Functions
-int get_m_pool_index(void) {
-        int i, pool_idx;
+spi_mpool_t* get_free_mpool(void) {
+        spi_mpool_t* mpool_ptr = NULL;
+        u16 i;
 
-        pool_idx = -1;
         for (i = 0; i < MEM_POOL_SIZE; i++) {
-                if (SpiMemPool[i].in_use == FALSE) {
-                        SpiMemPool[i].in_use = TRUE;
-                        data_in_pool = TRUE;
-                        pool_idx = i;
+                if (SpiMemPool[i].state == MPOOL_FREE) {
+                        SpiMemPool[i].state = MPOOL_ACQUIRED;
+                        mpool_ptr = &SpiMemPool[i];
                         break;
                 }
         }
 
-        return pool_idx;
+        return mpool_ptr;
 }
 
 
-MacSpiMemType* get_pool_mem(int idx) {
-        if (idx >= MEM_POOL_SIZE) {
-                return NULL;
+
+spi_mpool_t* get_data_mpool(void) {
+        spi_mpool_t* mpool_ptr = NULL;
+        u16 i;
+
+        for (i = 0; i < MEM_POOL_SIZE; i++) {
+                if (SpiMemPool[i].state == MPOOL_DATA_FILLED) {
+                        mpool_ptr = &SpiMemPool[i];
+                        break;
+                }
         }
 
-        return &SpiMemPool[idx];
+        return mpool_ptr;
 }
 
 
-void free_mem_pool(int idx) {
-        if (idx >= MEM_POOL_SIZE) {
-                return;
+
+boolean free_mpool(spi_mpool_t* p_mpool) {
+        boolean retval = TRUE;
+
+        if ((p_mpool >= SpiMemPool) && (p_mpool <= &SpiMemPool[MEM_POOL_SIZE])) {
+                p_mpool->state = MPOOL_FREE;
+        }
+        else {
+                retval = FALSE;
         }
 
-        SpiMemPool[idx].in_use = FALSE;
-}
-
-
-
-int get_active_pool_idx(void) {
-        return active_pool_idx;
-}
-
-void set_active_pool_idx(int idx) {
-        active_pool_idx = idx;
-}
-
-void clr_active_pool_idx(void) {
-        free_mem_pool(active_pool_idx);
-        active_pool_idx = -1;
-}
-
-boolean if_m_pool_has_data(void) {
-        return data_in_pool;
-}
-
-void m_pool_scan_complete(void) {
-        data_in_pool = FALSE;
-}
-
-boolean if_m_pool_mem_in_use(int idx) {
-        if (idx >= MEM_POOL_SIZE) {
-                return FALSE;
-        }
-
-        return SpiMemPool[idx].in_use;
+        return retval;
 }
