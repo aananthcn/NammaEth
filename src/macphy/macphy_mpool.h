@@ -27,7 +27,7 @@
 
 
 #define MEM_POOL_BUF_LEN        (1522)
-#define MEM_POOL_SIZE           (3)
+#define SPI_MEM_POOL_SIZE           (3)
 
 
 typedef enum {
@@ -46,9 +46,9 @@ typedef struct {
 } spi_mpool_t;
 
 
-spi_mpool_t* get_free_mpool(void);
-spi_mpool_t* get_data_mpool(void);
-boolean free_mpool(spi_mpool_t* p_mpool);
+spi_mpool_t* get_new_spi_mpool(void);
+spi_mpool_t* get_spi_mpool_w_data(void);
+boolean free_spi_mpool(spi_mpool_t* p_mpool);
 
 
 #endif

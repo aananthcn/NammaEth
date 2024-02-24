@@ -316,7 +316,6 @@ boolean enc28j60_write_phy(uint8 phyaddr, uint16 data) {
 // Basic ENC28J60 Primitive - Memory R/W
 boolean enc28j60_read_mem(spi_mpool_t *mpool) {
         uint16 dlen = mpool->dlen;
-        uint16 i;
 
         /* check if data+1-byte_read opcode can fit into Rx Buffer */
         if (dlen+1 > MAX_ETH_FRAME_LEN) {
@@ -439,7 +438,7 @@ void send_pkt_from_mpool(spi_mpool_t *mpool) {
         }
 
         /* by this time the packet should have gone into the macphy's memory */
-        if (FALSE == free_mpool(mpool)) {
+        if (FALSE == free_spi_mpool(mpool)) {
                 LOG_ERR("%s(): Unable to free mpool", __func__);
         }
 
@@ -463,7 +462,7 @@ boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
         }
 
         /* get memory pool for ethernet frame transfer */
-        mpool = get_free_mpool();
+        mpool = get_new_spi_mpool();
         if (mpool == NULL) {
                 LOG_ERR("Can't send the pkt(len = %d), no free mpool!", pktlen);
                 return FALSE;
@@ -535,9 +534,9 @@ uint16 macphy_pkt_recv(uint8 *pktptr, uint16 maxlen) {
 
 
         /* get memory pool for ethernet frame reception */
-        mpool = get_free_mpool();
+        mpool = get_new_spi_mpool();
         if (mpool == NULL) {
-                LOG_ERR("Can't recv eth pkt, no free mpool, increase MEM_POOL_SIZE!");
+                LOG_ERR("Can't recv eth pkt, no free mpool, increase SPI_MEM_POOL_SIZE!");
                 return 0;
         }
 
@@ -581,7 +580,7 @@ uint16 macphy_pkt_recv(uint8 *pktptr, uint16 maxlen) {
         }
 
         /* free the memory pool */
-        if (FALSE == free_mpool(mpool)) {
+        if (FALSE == free_spi_mpool(mpool)) {
                 LOG_ERR("%s(): Unable to free mpool", __func__);
         }
 
@@ -613,11 +612,11 @@ void macphy_periodic_fn(void) {
         /* loop through the mem_pool for sending prefilled pkt */
         do {
                 /* get filled memory pool for ethernet transmission */
-                mpool = get_data_mpool();
+                mpool = get_spi_mpool_w_data();
 
                 if(mpool) {
                         send_pkt_from_mpool(mpool);
-                        if (FALSE == free_mpool(mpool)) {
+                        if (FALSE == free_spi_mpool(mpool)) {
                                 LOG_ERR("%s(): Unable to free mpool", __func__);
                         }
                 }

@@ -24,16 +24,15 @@
 
 //////////////////////////////////////////////
 // BASIC ETHERNET Tx & Rx Buffers
-static spi_mpool_t SpiMemPool[MEM_POOL_SIZE];
-static int active_pool_idx = -1;
+static spi_mpool_t SpiMemPool[SPI_MEM_POOL_SIZE];
 
 
 // Memory Pool Functions
-spi_mpool_t* get_free_mpool(void) {
+spi_mpool_t* get_new_spi_mpool(void) {
         spi_mpool_t* mpool_ptr = NULL;
         u16 i;
 
-        for (i = 0; i < MEM_POOL_SIZE; i++) {
+        for (i = 0; i < SPI_MEM_POOL_SIZE; i++) {
                 if (SpiMemPool[i].state == MPOOL_FREE) {
                         SpiMemPool[i].state = MPOOL_ACQUIRED;
                         mpool_ptr = &SpiMemPool[i];
@@ -46,11 +45,11 @@ spi_mpool_t* get_free_mpool(void) {
 
 
 
-spi_mpool_t* get_data_mpool(void) {
+spi_mpool_t* get_spi_mpool_w_data(void) {
         spi_mpool_t* mpool_ptr = NULL;
         u16 i;
 
-        for (i = 0; i < MEM_POOL_SIZE; i++) {
+        for (i = 0; i < SPI_MEM_POOL_SIZE; i++) {
                 if (SpiMemPool[i].state == MPOOL_DATA_FILLED) {
                         mpool_ptr = &SpiMemPool[i];
                         break;
@@ -62,10 +61,10 @@ spi_mpool_t* get_data_mpool(void) {
 
 
 
-boolean free_mpool(spi_mpool_t* p_mpool) {
+boolean free_spi_mpool(spi_mpool_t* p_mpool) {
         boolean retval = TRUE;
 
-        if ((p_mpool >= SpiMemPool) && (p_mpool <= &SpiMemPool[MEM_POOL_SIZE])) {
+        if ((p_mpool >= SpiMemPool) && (p_mpool <= &SpiMemPool[SPI_MEM_POOL_SIZE])) {
                 p_mpool->state = MPOOL_FREE;
         }
         else {
