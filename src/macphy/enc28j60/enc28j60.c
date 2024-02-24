@@ -31,7 +31,7 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(enc28j60, LOG_LEVEL_DBG);
 
-#define ADDL_ENC28J60_DEBUG_PRINTS      1
+#define ADDL_ENC28J60_DEBUG_PRINTS      0
 
 
 // Memory Buffer Layout (8k)
