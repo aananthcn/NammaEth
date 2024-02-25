@@ -31,7 +31,10 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(enc28j60, LOG_LEVEL_DBG);
 
+
+// set any of these to 1 if you need additional debugging
 #define ADDL_ENC28J60_DEBUG_PRINTS      0
+#define ADDL_ENC28J60_ERROR_CHECKS      0
 
 
 // Memory Buffer Layout (8k)
@@ -442,7 +445,7 @@ void send_pkt_from_mpool(spi_mpool_t *mpool) {
                 LOG_ERR("%s(): Unable to free mpool", __func__);
         }
 
-#ifdef ADDL_ENC28J60_DEBUG_PRINTS
+#if ADDL_ENC28J60_DEBUG_PRINTS == 1
         dump_enc28j60_status_registers();
 #endif
 }
@@ -497,7 +500,7 @@ boolean macphy_pkt_send(uint8 *pktptr, uint16 pktlen) {
                 send_pkt_from_mpool(mpool);
         }
 
-#if ADDL_ENC28J60_DEBUG_PRINTS
+#if ADDL_ENC28J60_ERROR_CHECKS == 1
         /* check for errors while sending */
         if (enc28j60_read_reg(ESTAT) & ESTAT_TXABRT)
         {
